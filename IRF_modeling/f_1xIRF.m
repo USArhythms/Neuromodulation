@@ -101,7 +101,7 @@ params = fmincon(fun,[t0, tau1, tau2, A, B],[],[],[],[],[0,0.01,0.01,-Inf,-Inf],
 
 IRF = f_alpha_IRF(params(1),params(2),params(3),params(4),params(5),fs,win);
 conv = f_3Dconvolve(Ca./std(Ca,0,3),IRF,win*fs,ones(size(brain_mask)));
-perf = f_HemCorr(HbT,conv);
+perf = f_corr(HbT,conv,3);
 
 if ~isempty(corrWin)
     corrGram = f_HemCorrGram(HbT,conv,corrWin);

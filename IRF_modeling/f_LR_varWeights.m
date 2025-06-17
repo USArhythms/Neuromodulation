@@ -131,7 +131,7 @@ outParams.B = LR(:,:,2);
 %% calculate performance
 pred_HbT = conv_Ca.*LR(:,:,1)+conv_NE.*LR(:,:,2);
 
-perf = f_HemCorr(HbT./std(HbT,0,3),pred_HbT);
+perf = f_corr(HbT./std(HbT,0,3),pred_HbT,3);
 
 %%
 

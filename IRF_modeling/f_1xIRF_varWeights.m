@@ -126,7 +126,7 @@ IRF = reshape(IRF,dim(1),dim(2),[]);
 %% calculate performance
 pred_HbT = convPos.*LR(:,:,1)+convNeg.*LR(:,:,2);
 
-perf = f_HemCorr(HbT,pred_HbT);
+perf = f_corr(HbT,pred_HbT,3);
 
 if ~isempty(corrWin)
     corrGram = f_HemCorrGram(HbT,pred_HbT,corrWin);
