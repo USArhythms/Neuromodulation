@@ -1,0 +1,75 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%          Main Processing Script for Neuromodulation Analysis
+%
+% Reads nwb files located at https://dandiarchive.org/dandiset/001211
+
+%% add path to local matNWB installation and child directories
+
+% ignore if matNWB is installed via MATLAB
+addpath('/projectnb/devorlab/bcraus/AnalysisCode/new_processing/matnwb');
+
+% addPaths(fileparts(mfilename('fullpath')));
+
+%% load nwb file and extract relevant variables
+nwb = nwbRead('/projectnb/devorlab/bcraus/AnalysisCode/NWB/test.nwb');
+
+[rfp_HD,gfp_HD,Hb,HbO,HbT,Whisking,Pupil,Accelerometer,brain_mask,allen_masks,fs] = f_extractNWB(nwb);
+
+%% perform analysis for Fig 1
+
+Fig1 = struct;
+
+ds = 32; % downsampling factor for estimation of initial timing parameters of IRF
+numThreads = 4; % number of cores to use in optimization algorithm
+win = [0 10]; % IRF kernel range (s)
+corrWin = [15 3]; % window for temporal IRF performance analysis (s)
+
+% low pass filter HbT below 0.5 Hz, for unfiltered use HbT
+HbT_low = f_bpf(HbT,[0, 0.5],fs,3);
+
+% estimate single IRF models
+
+Fig1.IRFx1_inv = struct;
+
+[Fig1.IRFx1_inv.perf,Fig1.IRFx1_inv.IRF,Fig1.IRFx1_inv.params,tmpCorr] = f_1xIRF(HbT_low,rfp_HD,win,fs,brain_mask,4,corrWin*fs,numThreads);
+
+%%
+Fig1.IRFx1_inv.allenCorr = squeeze(mean(tmpCorr.*permute(maskAllen,[1 2 4 3]),[1 2],'omitnan'));
+
+conv = f_3Dconvolve(Ca./std(Ca,0,3),IRFx1.inv.IRF,win*settings.fs,ones(size(brain_mask)));
+corrGram = f_HemCorrGram(HbT,conv,corrWin_long*settings.fs);
+IRFx1.inv.allenCorrLong = squeeze(mean(corrGram.*permute(maskAllen,[1 2 4 3]),[1 2],'omitnan'));
+
+%% single IRF model - invariant weights SSp
+
+SSp = sum(maskAllen(:,:,[4 5 11]),3,'omitnan');
+SSp(SSp==0) = NaN;
+
+[IRFx1.inv_SSp.perf,IRFx1.inv_SSp.IRF,IRFx1.inv_SSp.params,tmpCorr] = f_1xIRF(HbT,Ca,win,settings.fs,SSp.*brain_mask,4,corrWin_short*settings.fs,numThreads);
+IRFx1.inv_SSp.allenCorrShort = squeeze(mean(tmpCorr.*permute(maskAllen,[1 2 4 3]),[1 2],'omitnan'));
+
+conv = f_3Dconvolve(Ca./std(Ca,0,3),IRFx1.inv_SSp.IRF,win*settings.fs,ones(size(brain_mask)));
+corrGram = f_HemCorrGram(HbT,conv,corrWin_long*settings.fs);
+IRFx1.inv_SSp.allenCorrLong = squeeze(mean(corrGram.*permute(maskAllen,[1 2 4 3]),[1 2],'omitnan'));
+
+%% single IRF model - varying weights
+
+[IRFx1.var.perf,IRFx1.var.IRF,IRFx1.var.params,tmpCorr,predHbT] = f_1xIRF_varWeights(HbT,Ca,win,settings.fs,brain_mask,ds,corrWin_short*settings.fs,numThreads);
+IRFx1.var.allenCorrShort = squeeze(mean(tmpCorr.*permute(maskAllen,[1 2 4 3]),[1 2],'omitnan'));
+
+corrGram = f_HemCorrGram(HbT,predHbT,corrWin_long*settings.fs);
+IRFx1.var.allenCorrLong = squeeze(mean(corrGram.*permute(maskAllen,[1 2 4 3]),[1 2],'omitnan'));
+
+tmpData.IRFx1 = IRFx1;
+
+%% additional functions
+
+function addPaths(mainDir)
+    addDirs = genpath(mainDir);
+    addDirs = strsplit(addDirs,pathsep);
+    addDirs = addDirs(~cellfun(@(x) any(startsWith(strsplit(x,filesep), '.')), addDirs));
+    addDirs = strjoin(addDirs,pathsep);
+    addpath(addDirs);
+end
