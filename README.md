@@ -8,5 +8,3 @@ Used in:
 Contents:
 
 MAIN.m - main script which analyzes data for main figures
-
-supporting functions - f_2xDeconvolve.m, f_HemCorr.m, f_HemCorrGram.m, f_bpf.m, f_downsample.m, f_estimateIRFalpha.m, f_funConGram.m, f_hemRegress.m, and f_extractNWB.m.
