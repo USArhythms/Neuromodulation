@@ -1,6 +1,6 @@
 function [rfp,gfp,rfp_HD,gfp_HD,Hb,HbO,HbT,Whisking,Pupil,Accelerometer,brain_mask,vessel_mask,allen_masks,fs,mouseInfo,sessionInfo,behCam] = f_extractNWB(nwb)
 
-%% extract optical channels
+%% extract optical channels 
 
 rfp = 100*permute(nwb.acquisition.get('rfp').data.load(),[2 1 3]);
 gfp = 100*permute(nwb.acquisition.get('gfp').data.load(),[2 1 3]);
@@ -62,6 +62,8 @@ sessionInfo.interRun = sscanf(session{4},'IR%d');
 
 %% extract behavior video
 
-behCam = permute(nwb.processing.get('behavior').nwbdatainterface.get('Behavior_Video').data.load(),[2 1 3]);
+if nargout > 16
+    behCam = permute(nwb.processing.get('behavior').nwbdatainterface.get('Behavior_Video').data.load(),[2 1 3]);
+end
 
 end

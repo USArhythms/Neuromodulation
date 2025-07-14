@@ -108,7 +108,7 @@ B = LR(:,:,2);
 
 fun = @(params)f_hrf_cost_func(params(1),params(2),params(3:N+2),params(N+3:2*N+2),fs,win,design_matrix,design_HbT);
 
-options = optimset('MaxFunEvals',25000,'MaxIter',500,'Display','iter','Algorithm','active-set');
+options = optimset('MaxFunEvals',25000,'MaxIter',500,'Display','iter','Algorithm','active-set','Display','off');
 params = fmincon(fun,[t1, t2, A, B],[],[],[],[],[0 win(1) -Inf*ones(1,numel(A)*2)],[win(2) win(2) Inf*ones(1,numel(A)*2)],[],options);
 
 

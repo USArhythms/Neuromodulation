@@ -94,7 +94,7 @@ B = -LR(2);
 %% run optimization using gradient descent
 fun = @(params)f_hrf_cost_func(params(1),params(2),params(3),params(4),params(5),fs,win,Ca_mat,design_HbT);
 
-options = optimset('MaxFunEvals',25000,'MaxIter',500,'Display','iter','Algorithm','active-set','FunValCheck','on');
+options = optimset('MaxFunEvals',25000,'MaxIter',500,'Display','iter','Algorithm','active-set','FunValCheck','on','Display','off');
 params = fmincon(fun,[t0, tau1, tau2, A, B],[],[],[],[],[0,0.01,0.01,-Inf,-Inf],[win(2),win(2),win(2),Inf,Inf],[],options);
 
 %%
