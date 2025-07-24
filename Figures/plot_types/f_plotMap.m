@@ -12,6 +12,8 @@ parse(p,varargin{2:end});
 
 imAlpha = ~isnan(map);
 
+hold on;
+
 imagesc(map,AlphaData=imAlpha);
 axis image off;
 c = colorbar;

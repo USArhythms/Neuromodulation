@@ -49,3 +49,5 @@ hold on;
 for i = 1:N
     plot(bound{i}(:,2),bound{i}(:,1),Color=color,LineWidth=linewidth);
 end
+
+set(gca,'YDir','reverse');

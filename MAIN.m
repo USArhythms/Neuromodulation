@@ -95,6 +95,17 @@ for nwbI = indices
     
     Fig1.SSp_perf_vs_GRAB = f_corr(Fig1.GRAB, Fig1.IRFx1_SSp.perf_dt, 1)';
     
+    %% GRAB connectivity
+
+    GRAB_FC = struct;
+
+    GRAB_FC.GRAB = squeeze(mean(gfp_HD.*brain_mask.*vessel_mask.*permute(allen_masks,[1 2 4 3]),[1,2],'omitnan'));
+    GRAB_FC.GRAB_global = squeeze(mean(gfp_HD.*brain_mask.*vessel_mask,[1,2],'omitnan'));
+    GRAB_FC.GRAB_norm = squeeze(mean(gfp_HD./std(gfp_HD,0,3).*brain_mask.*vessel_mask,[1,2],'omitnan'));
+    GRAB_FC.FC = corrcoef(GRAB_FC.GRAB);
+    tmp = detrend(GRAB_FC.GRAB);
+    GRAB_FC.FC_detrend = corrcoef(tmp);
+
     %% perform analysis for Fig 2
     
     if string(GRAB) == "GRAB_NE"

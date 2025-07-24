@@ -1,4 +1,4 @@
-function [log, order, settings, Fig1, Fig2, Fig3, Behavior, Hb_model, unfiltered, shuffled, NE_reg, spectra, FC_fr] = f_organizeData(path)
+function [log, order, settings, Fig1, Fig2, Fig3, Behavior, Hb_model, unfiltered, shuffled, NE_reg, spectra, FC_fr, GRAB_FC] = f_organizeData(path)
 
 files = dir(path);
 files(1:2) = [];
@@ -16,6 +16,7 @@ shuffled = struct;
 NE_reg = struct;
 spectra = struct;
 FC_fr = struct;
+GRAB_FC = struct;
 
 N = numel(files);
 
@@ -45,6 +46,19 @@ for i = 1:N
     Fig1.GRAB{i} = metadata.Fig1.GRAB(:,2);
     Fig1.SSp_perf_dt{i} = metadata.Fig1.IRFx1_SSp.perf_dt(:,2);
     Fig1.SSp_perf_vs_GRAB{i} = metadata.Fig1.SSp_perf_vs_GRAB;
+    
+    corrWin = metadata.Fig1.perf_dt_win;
+    tmpGRAB = movmean(metadata.GRAB_FC.GRAB_global,corrWin(2)*10,1);
+    tmpGRAB = tmpGRAB(corrWin(1)*10/2:corrWin(2)*10:numel(tmpGRAB)-corrWin(1)*10/2);
+    
+    Fig1.GRAB_global{i} = tmpGRAB;
+    Fig1.SSp_perf_vs_GRAB_global{i} = f_corr(metadata.Fig1.IRFx1_SSp.perf_dt,tmpGRAB,1);
+    
+    GRAB_FC.GRAB{i} = metadata.GRAB_FC.GRAB;
+    GRAB_FC.GRAB_global{i} = metadata.GRAB_FC.GRAB_global;
+    GRAB_FC.GRAB_norm{i} = metadata.GRAB_FC.GRAB_norm;
+    GRAB_FC.FC{i} = metadata.GRAB_FC.FC;
+    GRAB_FC.FC_detrend{i} = metadata.GRAB_FC.FC_detrend;
 
     Behavior.SPG.fr = metadata.Behavior.SPC.fr;
     Behavior.SPG.rfp_HD{i} = metadata.Behavior.SPC.rfp_HD;
@@ -73,6 +87,13 @@ for i = 1:N
     if string(log(i).GRAB) == "GRAB_NE"
         Behavior.NE_IRF_perf{i} = metadata.Behavior.NE_IRF.perf;
         Behavior.NE_IRF_IRF{i} = metadata.Behavior.NE_IRF.IRF;
+        
+        GRAB_FC.gfp_HD_vs_HbT_low{i} = [];
+        tmpHbT = f_bpf(metadata.Fig3.HbT,[0,0.5],10);
+        tmpNE = GRAB_FC.GRAB{i};
+        for r = 1:12
+            GRAB_FC.gfp_HD_vs_HbT_low{i}(:,r) = xcorr(tmpNE(:,r),tmpHbT(:,r),100,'normalized');
+        end
 
         Fig2.LR_perf{i} = metadata.Fig2.LR.perf;
         Fig2.LR_tA{i} = metadata.Fig2.LR.params.tA;
@@ -101,6 +122,9 @@ for i = 1:N
         Fig3.lowNE_HbT{i} = metadata.Fig3.lowNE_FC.HbT;
         Fig3.highNE_Ca{i} = metadata.Fig3.highNE_FC.Ca;
         Fig3.highNE_HbT{i} = metadata.Fig3.highNE_FC.HbT;
+        Fig3.FC_Ca_HbT_vs_GRAB{i} = metadata.Fig3.r.FC_Ca_HbT_vs_GRAB;
+        Fig3.FC_Ca_vs_GRAB{i} = metadata.Fig3.r.FC_Ca_vs_GRAB;
+        Fig3.FC_HbT_vs_GRAB{i} = metadata.Fig3.r.FC_HbT_vs_GRAB;
 
         Hb_model.Hb_LR_perf{i} = metadata.Hb_model.Hb.LR.perf;
         Hb_model.Hb_LR_tA{i} = metadata.Hb_model.Hb.LR.params.tA;
@@ -148,6 +172,19 @@ for i = 1:N
         NE_reg.IRFx1_inv_perf{i} = metadata.NE_reg.IRFx1_inv.perf;
         NE_reg.IRFx1_inv_IRF{i} = metadata.NE_reg.IRFx1_inv.IRF;
         
+        bounds = prctile(metadata.Fig3.GRAB,[30, 70]);
+        lowNE = metadata.Fig3.GRAB < bounds(1);
+        highNE = metadata.Fig3.GRAB > bounds(2);
+        
+        global_HbT_reg = metadata.GRAB_FC.GRAB_global \ metadata.Fig3.HbT;
+        global_HbT_reg = metadata.Fig3.HbT-global_HbT_reg.*metadata.GRAB_FC.GRAB_global;
+
+        global_FC_HbT_reg = f_funConGram(global_HbT_reg,metadata.Fig3.win*10);
+        NE_reg.global_lowNE_FC{i} = mean(global_FC_HbT_reg(:,:,lowNE),3);
+        NE_reg.global_highNE_FC{i} = mean(global_FC_HbT_reg(:,:,highNE),3);
+        
+        NE_reg.global_FC_R_HbT_reg{i} = f_corr(metadata.Fig3.FC.Ca,global_FC_HbT_reg,3);
+        
         FC_fr.lowF_lowNE_Ca{i} = metadata.FC_fr.low.lowNE_FC.Ca;
         FC_fr.lowF_highNE_Ca{i} = metadata.FC_fr.low.highNE_FC.Ca;
         FC_fr.medF_lowNE_Ca{i} = metadata.FC_fr.medium.lowNE_FC.Ca;
@@ -158,22 +195,35 @@ for i = 1:N
         FC_fr.lowF_highNE_HbT{i} = metadata.FC_fr.low.highNE_FC.HbT;
         FC_fr.medF_lowNE_HbT{i} = metadata.FC_fr.medium.lowNE_FC.HbT;
         FC_fr.medF_highNE_HbT{i} = metadata.FC_fr.medium.highNE_FC.HbT;
+        
+        NE_bin = prctile(metadata.spectra.NE,[30 70]);
+        low_idx = metadata.spectra.NE < NE_bin(1);
+        high_idx = metadata.spectra.NE > NE_bin(2);
+        spectra.fr = metadata.spectra.SPG.f';
+        SPG_Ca = metadata.spectra.SPG.Ca.*metadata.spectra.SPG.f;
+        SPG_HbT = metadata.spectra.SPG.HbT.*metadata.spectra.SPG.f;
+        
+        [~,fIdx] = min(abs(metadata.spectra.SPG.f'-[0.1, 0.5]));
 
         spectra.low_NE_Ca{i} = mean(metadata.spectra.low_NE.Ca,2);
         spectra.high_NE_Ca{i} = mean(metadata.spectra.high_NE.Ca,2);
         spectra.low_NE_HbT{i} = mean(metadata.spectra.low_NE.HbT,2);
         spectra.high_NE_HbT{i} = mean(metadata.spectra.high_NE.HbT,2);
-        spectra.lowF_lowNE_Ca{i} = metadata.spectra.low_NE.f_low.Ca;
-        spectra.lowF_highNE_Ca{i} = metadata.spectra.high_NE.f_low.Ca;
-        spectra.medF_lowNE_Ca{i} = metadata.spectra.low_NE.f_med.Ca;
-        spectra.medF_highNE_Ca{i} = metadata.spectra.high_NE.f_med.Ca;
-        spectra.highF_lowNE_Ca{i} = metadata.spectra.low_NE.f_high.Ca;
-        spectra.highF_highNE_Ca{i} = metadata.spectra.high_NE.f_high.Ca;
-        spectra.lowF_lowNE_HbT{i} = metadata.spectra.low_NE.f_low.HbT;
-        spectra.lowF_highNE_HbT{i} = metadata.spectra.high_NE.f_low.HbT;
-        spectra.medF_lowNE_HbT{i} = metadata.spectra.low_NE.f_med.HbT;
-        spectra.medF_highNE_HbT{i} = metadata.spectra.high_NE.f_med.HbT;
+        spectra.NE{i} = metadata.spectra.NE;
+        spectra.SPG_Ca{i} = SPG_Ca;
+        spectra.SPG_HbT{i} = SPG_HbT;
 
+        spectra.lowF_lowNE_Ca{i} = squeeze(mean(SPG_Ca(low_idx,1:fIdx(1),:),[1,2]));
+        spectra.lowF_highNE_Ca{i} = squeeze(mean(SPG_Ca(high_idx,1:fIdx(1),:),[1,2]));
+        spectra.medF_lowNE_Ca{i} = squeeze(mean(SPG_Ca(low_idx,fIdx(1):fIdx(2),:),[1,2]));
+        spectra.medF_highNE_Ca{i} = squeeze(mean(SPG_Ca(high_idx,fIdx(1):fIdx(2),:),[1,2]));
+        spectra.highF_lowNE_Ca{i} = squeeze(mean(SPG_Ca(low_idx,fIdx(2):end,:),[1,2]));
+        spectra.highF_highNE_Ca{i} = squeeze(mean(SPG_Ca(high_idx,fIdx(2):end,:),[1,2]));
+        spectra.lowF_lowNE_HbT{i} = squeeze(mean(SPG_HbT(low_idx,1:fIdx(1),:),[1,2]));
+        spectra.lowF_highNE_HbT{i} = squeeze(mean(SPG_HbT(high_idx,1:fIdx(1),:),[1,2]));
+        spectra.medF_lowNE_HbT{i} = squeeze(mean(SPG_HbT(low_idx,fIdx(1):fIdx(2),:),[1,2]));
+        spectra.medF_highNE_HbT{i} = squeeze(mean(SPG_HbT(high_idx,fIdx(1):fIdx(2),:),[1,2]));
+        
     end
 
 end
