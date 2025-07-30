@@ -1,4 +1,4 @@
-function [perf,IRF,outParams] = f_2alphaDeconvolve(HbT,Ca,NE,win,fs, ...
+function [perf,IRF,outParams,conv_Ca,conv_NE] = f_2alphaDeconvolve(HbT,Ca,NE,win,fs, ...
     brain_mask,ds,maxThreads,initialParam)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Performs deconvolution of HbT by applying a single alpha function 
@@ -133,7 +133,11 @@ outParams.B = LR(:,:,2);
 IRF = [hrf1,-hrf2];
 
 %% calculate performance
-pred_HbT = conv_Ca.*LR(:,:,1)+conv_NE.*LR(:,:,2);
+
+conv_Ca = conv_Ca.*LR(:,:,1);
+conv_NE = conv_NE.*LR(:,:,2);
+
+pred_HbT = conv_Ca+conv_NE;
 
 perf = f_corr(HbT./std(HbT,0,3),pred_HbT,3);
 

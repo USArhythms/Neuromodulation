@@ -1,4 +1,11 @@
 function [c] = f_xcorr(sig1,sig2,maxlag)
+% calculates cross-correlation function between columns of sig1 and sig2
+% 
+% Inputs:
+%   sig1 - 1st signal (t x N1)
+%   sig2 - 2nd signal (t x N2)
+%   maxlag - max negative and positive lag (datapoints)
+
 %%
 % sig1 = Signals.Mid(2,:)';
 % sig2 = Signals.Mid(5,:)';

@@ -4,46 +4,88 @@ function [regImg,regFactor] = f_ImgReg_allen(refParcellation,parcellationStruct,
 % parcells2 = comb.allen{1};
 % img = comb.vis{1};
 
-if 
-L = sum(parcellationStruct.Masks(:,:,:,1),'all');
-R = sum(parcellationStruct.Masks(:,:,:,2),'all');
+type = isstruct(parcellationStruct);
 
-if L && R
-    hem = 2;
-    side = 0;
-else
-    hem = 1;
-    if L
+if type
+    parcellationStruct = parcellationStruct.Masks;
+    L = sum(parcellationStruct(:,:,:,1),'all');
+    R = sum(parcellationStruct(:,:,:,2),'all');
+    
+    if L && R
+        hem = 2;
         side = 0;
     else
-        side = 1;
+        hem = 1;
+        if L
+            side = 0;
+        else
+            side = 1;
+        end
+    end
+else
+    parcellationStruct(isnan(parcellationStruct)) = 0;
+    hem = numel(bwboundaries(parcellationStruct(:,:,1)));
+    if hem == 2
+        side = 0;
+    else
+        cBFD = bwboundaries(parcellationStruct(:,:,3));
+        cBFD = mean(cBFD{1});
+        cBFD = cBFD(2);
+        cSSP = bwboundaries(parcellationStruct(:,:,5));
+        cSSP = mean(cSSP{1});
+        cSSP = cSSP(2);
+        
+        side = cSSP > cBFD;
     end
 end
 
 %% find points
 
-if hem == 1
-    Vis2 = parcellationStruct.Masks(:,:,12,side+1);
-    SSp_ll2 = parcellationStruct.Masks(:,:,5,side+1);
-    points.p2.point1 = round(findTop(Vis2));
-    points.p2.point2 = round(findTop(SSp_ll2));
+if type
+    if hem == 1
+        Vis2 = parcellationStruct(:,:,12,side+1);
+        SSp_ll2 = parcellationStruct(:,:,5,side+1);
+        points.p2.point1 = round(findTop(Vis2));
+        points.p2.point2 = round(findTop(SSp_ll2));
+        
+        Vis1 = refParcellation.Masks(:,:,12,side+1);
+        SSp_ll1 = refParcellation.Masks(:,:,5,side+1);
+        points.p1.point1 = round(findTop(Vis1));
+        points.p1.point2 = round(findTop(SSp_ll1));
+    else
+        Vis2L = parcellationStruct(:,:,12,1);
+        Vis2R = parcellationStruct(:,:,12,2);
+        points.p2.point1 = round(findTop(Vis2L));
+        points.p2.point2 = round(findTop(Vis2R));
     
-    Vis1 = refParcellation.Masks(:,:,12,side+1);
-    SSp_ll1 = refParcellation.Masks(:,:,5,side+1);
-    points.p1.point1 = round(findTop(Vis1));
-    points.p1.point2 = round(findTop(SSp_ll1));
-
+        Vis1L = refParcellation.Masks(:,:,12,1);
+        Vis1R = refParcellation.Masks(:,:,12,2);
+        points.p1.point1 = round(findTop(Vis1L));
+        points.p1.point2 = round(findTop(Vis1R));
+    end
 else
-    Vis2L = parcellationStruct.Masks(:,:,12,1);
-    Vis2R = parcellationStruct.Masks(:,:,12,2);
-    points.p2.point1 = round(findTop(Vis2L));
-    points.p2.point2 = round(findTop(Vis2R));
-
-    Vis1L = refParcellation.Masks(:,:,12,1);
-    Vis1R = refParcellation.Masks(:,:,12,2);
-    points.p1.point1 = round(findTop(Vis1L));
-    points.p1.point2 = round(findTop(Vis1R));
-
+    if hem == 1
+        Vis2 = parcellationStruct(:,:,12,side+1);
+        SSp_ll2 = parcellationStruct(:,:,5,side+1);
+        points.p2.point1 = round(findTop(Vis2));
+        points.p2.point2 = round(findTop(SSp_ll2));
+        
+        Vis1 = refParcellation.Masks(:,:,12,side+1);
+        SSp_ll1 = refParcellation.Masks(:,:,5,side+1);
+        points.p1.point1 = round(findTop(Vis1));
+        points.p1.point2 = round(findTop(SSp_ll1));
+    else
+        Vis2 = bwboundaries(parcellationStruct(:,:,12));
+        Vis2L = poly2mask(Vis2{1}(:,2),Vis2{1}(:,1),size(parcellationStruct,1),size(parcellationStruct,2));
+        Vis2R = poly2mask(Vis2{2}(:,2),Vis2{2}(:,1),size(parcellationStruct,1),size(parcellationStruct,2));
+        points.p2.point1 = round(findTop(Vis2L));
+        points.p2.point2 = round(findTop(Vis2R));
+    
+        Vis1L = refParcellation.Masks(:,:,12,1);
+        Vis1R = refParcellation.Masks(:,:,12,2);
+        points.p1.point1 = round(findTop(Vis1L));
+        points.p1.point2 = round(findTop(Vis1R));
+    end
 end
 
 %% adjust tilt
@@ -55,7 +97,7 @@ tilt(2) = atan((points.p2.point1(1)-points.p2.point2(1))/(points.p2.point1(2)-po
 
 d_tilt = tilt(1)-tilt(2);
 
-dim = size(parcellationStruct.Masks(:,:,1,1));
+dim = size(parcellationStruct(:,:,1,1));
 % centroid = dim/2+0.5;
 % img_padding = centroid-points.p2.point1;
 % img_padding = zeros(2*abs(img_padding)+dim);

@@ -1,6 +1,6 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%
+% 
 %          Main Processing Script for Neuromodulation Analysis
 % 
 % Reads nwb files located at https://dandiarchive.org/dandiset/001543 and
@@ -8,12 +8,12 @@
 
 %% add path to local matNWB installation and child directories
 
+% get path to Neuromodulation directory
 parentDir = f_path();
-
-% ignore if matNWB is installed via MATLAB
-addpath('/projectnb/devorlab/bcraus/AnalysisCode/new_processing/matnwb');
-
 addPaths(parentDir);
+
+% add path to matNWB directory - ignore if matNWB is installed
+addpath('/projectnb/devorlab/bcraus/AnalysisCode/new_processing/matnwb');
 
 %% load nwb file and extract relevant variables
 
@@ -21,28 +21,30 @@ addPaths(parentDir);
 nwbDir = fullfile(parentDir,'data');
 nwb_list = f_sortNWB(nwbDir);
 
+%% define files and input parameters
+
 saveMetadata = false;
 
-%%
-
 files = struct;
+files.metadata = fullfile(parentDir,'Analysis');
 files.save = fullfile(parentDir,'results');
-load(fullfile(parentDir,'Figures/plot_types/refAllen.mat'));
 
 %%
-% temporary index to analyze only a single run
-for nwbI = 1%:numel(nwb_list)
+% loop through all .nwb files in nwb_list
+for nwbI = 1:numel(nwb_list)
 
     fprintf(['Analyzing ', nwb_list(nwbI).Path, '...']);
-
+    
+    % read and load data from nwb file
     nwb = nwbRead(nwb_list(nwbI).Path);
-    
-    [~,gfp,rfp_HD,gfp_HD,Hb,HbO,HbT,Whisking,Pupil,Accelerometer,brain_mask,vessel_mask,allen_masks,fs,mouseInfo,sessionInfo] = f_extractNWB(nwb);
-    
-    GRAB = mouseInfo.GRAB;
-    
+    [~,gfp,rfp_HD,gfp_HD,Hb,HbO,HbT,Whisking,Pupil,Accelerometer,...
+        brain_mask,vessel_mask,allen_masks,fs,mouseInfo,sessionInfo]...
+        = f_extractNWB(nwb);
+        
     %% perform analysis for Fig 1
+    
     fprintf('\n\tFigure 1 Analysis...');
+    
     Fig1 = struct;
     
     ds = 32; % downsampling factor for estimation of initial timing parameters of IRF
@@ -56,6 +58,15 @@ for nwbI = 1%:numel(nwb_list)
     % low pass filter HbT below 0.5 Hz, for unfiltered use HbT
     HbT_low = f_bpf(HbT,[0,0.5],fs,3);
     
+    Fig1.Ca_allen = f_parcellate(rfp_HD,allen_masks);
+    Fig1.GRAB_allen = f_parcellate(gfp_HD,allen_masks);
+    Fig1.HbT_allen = f_parcellate(HbT,allen_masks);
+    Fig1.Pupil = Pupil;
+    Fig1.Whisking = Whisking;
+    Fig1.Accelerometer = Accelerometer;
+    Fig1.GRAB_type = mouseInfo.GRAB;
+    Fig1.allen_masks = allen_masks;
+
     % estimate invariant single IRF models
     [Fig1.IRFx1_inv.perf,Fig1.IRFx1_inv.IRF,Fig1.IRFx1_inv.params,tmpCorr] = f_1xIRF(HbT_low,rfp_HD,win,fs,brain_mask,4,corrWin*fs,numThreads);
     Fig1.IRFx1_inv.perf_dt = squeeze(mean(tmpCorr.*permute(allen_masks,[1 2 4 3]),[1 2],'omitnan'));
@@ -86,95 +97,6 @@ for nwbI = 1%:numel(nwb_list)
     Fig1.SSp_perf_vs_pupil = Fig1.SSp_perf_vs_pupil(2:13)';
     
     Fig1.SSp_perf_vs_GRAB = f_corr(Fig1.GRAB, Fig1.IRFx1_SSp.perf_dt, 1)';
-    
-    %% plot Fig 1
-
-    % C
-    f = figure(Position=[100 100 900 400]);
-    tiledlayout(1,2);
-    nexttile;
-    plot(0:0.1:10,Fig1.IRFx1_inv.IRF);
-    box off;
-    xlim([0 7]);
-    xlabel('Time (s)');
-    ylabel('a.u.');
-    set(gca,'FontSize',14);
-
-    nexttile;
-    f_plotMap(Fig1.IRFx1_inv.perf.*brain_mask,cmp=cmpvir,bounds=[0 1],title='Global IRF',clabel='r');
-    set(gca,'YDir','reverse');
-    
-    exportgraphics(f,fullfile(files.save,'Fig1C.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-    close(f);
-
-    % D
-    f = figure(Position=[100 100 900 400]);
-    tiledlayout(1,2);
-    nexttile;
-    plot(0:0.1:10,Fig1.IRFx1_SSp.IRF);
-    box off;
-    xlim([0 7]);
-    xlabel('Time (s)');
-    ylabel('a.u.');
-    set(gca,'FontSize',14);
-
-    nexttile;
-    f_plotMap(Fig1.IRFx1_SSp.perf.*brain_mask,cmp=cmpvir,bounds=[0 1],title='SSp IRF',clabel='r');
-    set(gca,'YDir','reverse');
-    
-    exportgraphics(f,fullfile(files.save,'Fig1D.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-    close(f);
-
-    % E
-    f = figure(Position=[100 100 900 400]);
-    tiledlayout(1,2);
-    nexttile;hold on;
-    plot(0:0.1:10,mean(Fig1.IRFx1_var.IRF_allen(:,4:5),2),color=c_Orange);
-    plot(0:0.1:10,Fig1.IRFx1_var.IRF_allen(:,2),color=c_darkCyan);
-    legend('SSp-tr/ll','MOs');
-    box off;
-    xlim([0 7]);
-    xlabel('Time (s)');
-    ylabel('a.u.');
-    set(gca,'FontSize',14);
-
-    nexttile;
-    f_plotMap(Fig1.IRFx1_var.perf.*brain_mask,cmp=cmpvir,bounds=[0 1],title='Variant IRF',clabel='r');
-    set(gca,'YDir','reverse');
-    
-    exportgraphics(f,fullfile(files.save,'Fig1E.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-    close(f);
-
-    % G
-    
-    pS = struct;
-    pS.xlim = [-4 4];
-
-    lm = fitlm(mean(Fig1.GRAB,2),Fig1.IRFx1_SSp.perf_dt(:,2));
-    lm = table2array(lm.Coefficients);
-
-    f = figure;hold on;
-    scatter(mean(Fig1.GRAB,2),Fig1.IRFx1_SSp.perf_dt(:,2),70,'filled',markerFaceColor=c_Orange);
-    plot(pS.xlim,pS.xlim*lm(2,1)+lm(1,1),'-k','LineWidth',2);
-    xlim(pS.xlim);
-    ylim([-1 1]);
-    xlabel('GRAB (\DeltaF/F)');
-    ylabel('r_S_S_p_-_I_R_F(MOs)');
-    set(gca,'FontSize',14);
-
-    exportgraphics(f,fullfile(files.save,'Fig1G.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-    close(f);
-
-    % H
-    
-    plotBM = refBM;
-    plotBM(:,1:300) = 0;
-
-    f = figure;
-    f_plotAllenMap(Fig1.SSp_perf_vs_GRAB,cmp=cmpbbr,cLabel='r',mask=plotBM,cRange=0.7*[-1,1]);
-    
-    exportgraphics(f,fullfile(files.save,'Fig1H.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-    close(f);
 
     %% GRAB connectivity
 
@@ -184,151 +106,51 @@ for nwbI = 1%:numel(nwb_list)
     GRAB_FC.GRAB_global = squeeze(mean(gfp_HD.*brain_mask.*vessel_mask,[1,2],'omitnan'));
     GRAB_FC.GRAB_norm = squeeze(mean(gfp_HD./std(gfp_HD,0,3).*brain_mask.*vessel_mask,[1,2],'omitnan'));
     GRAB_FC.FC = corrcoef(GRAB_FC.GRAB);
-    tmp = detrend(GRAB_FC.GRAB);
-    GRAB_FC.FC_detrend = corrcoef(tmp);
+    GRAB_FC.FC_detrend = corrcoef(detrend(GRAB_FC.GRAB));
 
     %% perform analysis for Fig 2
     
-    if string(GRAB) == "GRAB_NE"
+    if string(mouseInfo.GRAB) == "GRAB_NE"
         fprintf('\n\tFigure 2 Analysis...');
         Fig2 = struct;
         
         ds = 32; % downsampling factor for estimation of initial timing parameters of IRF
-        % numThreads = 4; % number of cores to use in optimization algorithm
+        numThreads = 4; % number of cores to use in optimization algorithm
         win = [-5 10]; % IRF kernel range (s)
         
         Fig2.irf_win = win;
-        
+        Fig2.allen_masks = allen_masks;
+
         HbT_low = f_bpf(HbT,[0, 0.5],fs,3);
         
-        globalNE = mean(gfp_HD./std(gfp_HD,0,3).*brain_mask.*vessel_mask,[1,2],'omitnan');
+        globalNE = f_parcellate(gfp_HD./std(gfp_HD,0,3),brain_mask);
+        globalNE = permute(globalNE,[2,3,1]);
+        Fig2.Ca_norm = f_parcellate(rfp_HD./std(rfp_HD,0,3),allen_masks);
+        Fig2.HbT_norm = f_parcellate(HbT_low./std(HbT_low,0,3),allen_masks);
 
         Fig2.LR = struct;
         Fig2.NE = squeeze(globalNE);
 
         % estimate linear regression model
 
-        [Fig2.LR.perf,Fig2.LR.params] = f_LR_varWeights(HbT_low,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
-        
+        [Fig2.LR.perf,Fig2.LR.params,Fig2.LR_Ca,Fig2.LR_NE] = f_LR_varWeights(HbT_low,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
+        Fig2.LR_Ca = f_parcellate(Fig2.LR_Ca,brain_mask.*allen_masks);
+        Fig2.LR_NE = f_parcellate(Fig2.LR_NE,brain_mask.*allen_masks);
+
         % estimate double IRF model - varying weights
         
         Fig2.IRFx2 = struct;
-        [Fig2.IRFx2.perf,Fig2.IRFx2.IRF,Fig2.IRFx2.params] = f_2alphaDeconvolve(HbT_low,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
+        [Fig2.IRFx2.perf,Fig2.IRFx2.IRF,Fig2.IRFx2.params,Fig2.IRFx2_Ca,Fig2.IRFx2_NE] = f_2alphaDeconvolve(HbT_low,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
         Fig2.IRFx2.params.A = Fig2.IRFx2.params.A*sum(Fig2.IRFx2.IRF(:,1));
         Fig2.IRFx2.params.B = Fig2.IRFx2.params.B*sum(Fig2.IRFx2.IRF(:,2));
-    
-    end
-    
-    %% plot Fig 2
-    
-    if string(GRAB) == "GRAB_NE"
-        % B
-        f = figure(Position=[100 100 900 400]);
-        tiledlayout(1,2);
-        nexttile;
-        f_plotMap(Fig2.LR.params.A.*brain_mask,cmp=cmpbbr,bounds=[-1 1],title='A');
-        set(gca,'YDir','reverse');
-    
-        nexttile;
-        f_plotMap(Fig2.LR.params.B.*brain_mask,cmp=cmpbbr,bounds=[-1 1],title='B');
-        set(gca,'YDir','reverse');
-        
-        exportgraphics(f,fullfile(files.save,'Fig2B.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-        close(f);
-
-        % C
-        f = figure;hold on;
-        bar(1,Fig2.LR.params.tA,FaceColor=[1,1,1],EdgeColor=c_Ca,LineWidth=2);
-        bar(2,Fig2.LR.params.tB,FaceColor=[1,1,1],EdgeColor=c_GRAB,LineWidth=2);
-        legend('t_A','t_B');
-        ylabel('Lag (s)');
-        set(gca,'FontSize',14);
-
-        exportgraphics(f,fullfile(files.save,'Fig2C.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-        close(f);
-
-        % D
-
-        f = figure;
-        f_plotMap(Fig2.LR.perf.*brain_mask,cmp=cmpvir,bounds=[0 1],title='LR Performance');
-        set(gca,'YDir','reverse');
-    
-        exportgraphics(f,fullfile(files.save,'Fig2D.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-        close(f);
-
-        % E
-
-        f = figure;
-        f_plotMap((Fig2.LR.perf-Fig1.IRFx1_inv.perf).*brain_mask,cmp=cmpbbr,bounds=[-1 1],title='LR vs. Global IRF Performance');
-        set(gca,'YDir','reverse');
-    
-        exportgraphics(f,fullfile(files.save,'Fig2E.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-        close(f);
-
-        % F
-        f = figure(Position=[100 100 900 400]);
-        tiledlayout(1,2);
-        nexttile;
-        f_plotMap(Fig2.IRFx2.params.A.*brain_mask,cmp=cmpbbr,bounds=[-1 1],title='A');
-        set(gca,'YDir','reverse');
-    
-        nexttile;
-        f_plotMap(Fig2.IRFx2.params.B.*brain_mask,cmp=cmpbbr,bounds=[-1 1],title='B');
-        set(gca,'YDir','reverse');
-        
-        exportgraphics(f,fullfile(files.save,'Fig2F.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-        close(f);
-
-        % G
-        f = figure;hold on;
-        plot(-5:0.1:10,Fig2.IRFx2.IRF(:,1),color=c_Ca);
-        plot(-5:0.1:10,Fig2.IRFx2.IRF(:,2),color=c_GRAB);
-        legend('IRF_C_a','IRF_N_E');
-        xlabel('Time (s)');
-        ylabel('a.u.');
-        set(gca,'FontSize',14);
-
-        exportgraphics(f,fullfile(files.save,'Fig2G.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-        close(f);
-
-        % H
-
-        f = figure;
-        f_plotMap(Fig2.IRFx2.perf.*brain_mask,cmp=cmpvir,bounds=[0 1],title='LR Performance');
-        set(gca,'YDir','reverse');
-    
-        exportgraphics(f,fullfile(files.save,'Fig2H.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-        close(f);
-
-        % I
-
-        f = figure;
-        f_plotMap((Fig2.IRFx2.perf-Fig1.IRFx1_inv.perf).*brain_mask,cmp=cmpbbr,bounds=[-1 1],title='LR vs. Global IRF Performance');
-        set(gca,'YDir','reverse');
-    
-        exportgraphics(f,fullfile(files.save,'Fig2I.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-        close(f);
-        
-        % J
-        
-        f = figure(Position=[100 100 900 400]);
-        tiledlayout(1,2);
-        nexttile;
-        f_plotMap(shuffled.summary.LR.perf.*brain_mask,cmp=cmpvir,bounds=[0 1],title='Shuffled LR');
-        set(gca,'YDir','reverse');
-    
-        nexttile;
-        f_plotMap(shuffled.summary.IRFx2.perf.*brain_mask,cmp=cmpvir,bounds=[0 1],title='Shuffled IRFx2');
-        set(gca,'YDir','reverse');
-        
-        exportgraphics(f,fullfile(files.save,'Fig2J.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-        close(f);
+        Fig2.IRFx2_Ca = f_parcellate(Fig2.IRFx2_Ca,brain_mask.*allen_masks);
+        Fig2.IRFx2_NE = f_parcellate(Fig2.IRFx2_NE,brain_mask.*allen_masks);
 
     end
 
     %% perform analysis for Fig 3
     
-    if string(GRAB) == "GRAB_NE"
+    if string(mouseInfo.GRAB) == "GRAB_NE"
         fprintf('\n\tFigure 3 Analysis...');
         Fig3 = struct;
         
@@ -339,6 +161,10 @@ for nwbI = 1%:numel(nwb_list)
         
         HbT_low = f_bpf(HbT,[0, 0.5],fs,3);
         
+        Fig3.Pupil = Pupil;
+        Fig3.Whisking = Whisking;
+        Fig3.Accelerometer = Accelerometer;
+
         Fig3.Ca = squeeze(mean(rfp_HD./std(rfp_HD,0,3).*vessel_mask.*permute(allen_masks,[1 2 4 3]),[1 2],'omitnan'));
         Fig3.HbT = squeeze(mean(HbT_low./std(HbT_low,0,3).*permute(allen_masks,[1 2 4 3]),[1 2],'omitnan'));
         
@@ -383,112 +209,8 @@ for nwbI = 1%:numel(nwb_list)
 
     %% plot Fig 3
     
-    if string(GRAB) == "GRAB_NE"
-        % D
-        
-        pS = struct;
-        pS.xlim = [-4 4];
-
-        f = figure(Position=[100 100 900 400]);
-        tiledlayout(1,2);
-        nexttile;hold on;
-        scatter(Fig3.GRAB,squeeze(Fig3.FC.Ca(2,5,:)),70,'filled',markerFaceColor=c_Orange);
-        lm = fitlm(Fig3.GRAB,squeeze(Fig3.FC.Ca(2,5,:)));
-        lm = table2array(lm.Coefficients);
-        plot(pS.xlim,pS.xlim*lm(2,1)+lm(1,1),'-k','LineWidth',2);
-        xlabel('Norepinephrine (\DeltaF/F)');
-        ylabel('FC_C_a(MOs,SSp-ll)');
-        set(gca,'FontSize',14);
-    
-        nexttile;hold on;
-        scatter(Fig3.GRAB,squeeze(Fig3.FC.HbT(2,5,:)),70,'filled',markerFaceColor=c_Orange);
-        lm = fitlm(Fig3.GRAB,squeeze(Fig3.FC.HbT(2,5,:)));
-        lm = table2array(lm.Coefficients);
-        plot(pS.xlim,pS.xlim*lm(2,1)+lm(1,1),'-k','LineWidth',2);
-        xlabel('Norepinephrine (\DeltaF/F)');
-        ylabel('FC_H_b_T(MOs,SSp-ll)');
-        set(gca,'FontSize',14);
-        
-        exportgraphics(f,fullfile(files.save,'Fig3D.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-        close(f);
-
-        % E
-        
-        pS = struct;
-        pS.xlim = [-4 4];
-
-        f = figure;hold on;
-        scatter(Fig3.GRAB,Fig3.FC.Ca_vs_HbT,70,'filled',markerFaceColor=c_Orange);
-        lm = fitlm(Fig3.GRAB,Fig3.FC.Ca_vs_HbT);
-        lm = table2array(lm.Coefficients);
-        plot(pS.xlim,pS.xlim*lm(2,1)+lm(1,1),'-k','LineWidth',2);
-        xlabel('Norepinephrine (\DeltaF/F)');
-        ylabel('r(FC_C_a,FC_H_b_T)');
-        set(gca,'FontSize',14);
-
-        exportgraphics(f,fullfile(files.save,'Fig3E.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-        close(f);
-
-        % G
-        f = figure(Position=[100 100 1300 400]);
-        tiledlayout(1,3);
-        nexttile;
-        f_plotFC(Fig3.lowNE_FC.Ca,1,cmp=cmpvir,bounds=[0 1],title='Low NE Ca++ Connectivity',clabel='r');
-        
-        nexttile;
-        f_plotFC(Fig3.highNE_FC.Ca,1,cmp=cmpvir,bounds=[0 1],title='High NE Ca++ Connectivity',clabel='r');
-        
-        ax3 = nexttile;
-        f_plotFC(Fig3.highNE_FC.Ca-Fig3.lowNE_FC.Ca,1,cmp=cmpvir,bounds=0.25*[-1 1],title='High - Low NE Ca++ Connectivity',clabel='\Deltar');
-        colormap(ax3,cmpbbr);
-
-        exportgraphics(f,fullfile(files.save,'Fig3G.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-        close(f);
-
-        % H
-        f = figure(Position=[100 100 1300 400]);
-        tiledlayout(1,3);
-        nexttile;
-        f_plotFC(Fig3.lowNE_FC.HbT,1,cmp=cmpvir,bounds=[0 1],title='Low NE HbT Connectivity',clabel='r');
-        
-        nexttile;
-        f_plotFC(Fig3.highNE_FC.HbT,1,cmp=cmpvir,bounds=[0 1],title='High NE HbT Connectivity',clabel='r');
-        
-        ax3 = nexttile;
-        f_plotFC(Fig3.highNE_FC.HbT-Fig3.lowNE_FC.HbT,1,cmp=cmpvir,bounds=0.25*[-1 1],title='High - Low NE HbT Connectivity',clabel='\Deltar');
-        colormap(ax3,cmpbbr);
-
-        exportgraphics(f,fullfile(files.save,'Fig3H.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
-        close(f);
-
-        %% I
-        low = Fig3.lowNE_FC.Ca;
-        high = Fig3.highNE_FC.Ca;
-        diffMap = high-low;
-
-        f = figure;
-        tl = tiledlayout(3,3);
-        tl.TileSpacing = 'compact';
-        tl.Padding = 'compact';
-        ax = [];
-        for i = [2,5,12]
-            nexttile;
-            f_plotAllenMap(low(:,i),cmp=cmpvir,cLabel='r',mask=plotBM,cRange=[0,1]);
-            colorbar off;
-
-            nexttile;
-            f_plotAllenMap(high(:,i),cmp=cmpvir,cLabel='r',mask=plotBM,cRange=[0,1]);
-            colorbar off;
-
-            ax(i) = nexttile;
-            f_plotAllenMap(diffMap(:,i),cmp=cmpvir,cLabel='r',mask=plotBM,cRange=0.25*[-1,1]);
-            colorbar off;
-
-        end
-        colormap(ax(2),cmpbbr);
-        colormap(ax(5),cmpbbr);
-        colormap(ax(12),cmpbbr);
-
+    if string(mouseInfo.GRAB) == "GRAB_NE"
+        plotFig3(Fig3,files.save);
     end
     
     %% analysis for behavior supplementary
@@ -526,7 +248,7 @@ for nwbI = 1%:numel(nwb_list)
     Behavior.R.signals = corrcoef(Behavior.signals);
     
     % NE IRF
-    if string(GRAB) == "GRAB_NE"
+    if string(mouseInfo.GRAB) == "GRAB_NE"
         [Behavior.NE_IRF.perf,Behavior.NE_IRF.IRF] = f_directDeco(f_bpf(gfp_HD,[0, 0.5],fs,3),rfp_HD,[-5, 10],fs,comb_mask,4);
     end
     
@@ -534,7 +256,7 @@ for nwbI = 1%:numel(nwb_list)
     
     %% Hb and HbO modeling
     
-    if string(GRAB) == "GRAB_NE"
+    if string(mouseInfo.GRAB) == "GRAB_NE"
         fprintf('\n\tHb modeling Analysis...');
         Hb_model = struct;
         
@@ -566,7 +288,7 @@ for nwbI = 1%:numel(nwb_list)
     
     %% unfiltered
     
-    if string(GRAB) == "GRAB_NE"
+    if string(mouseInfo.GRAB) == "GRAB_NE"
         fprintf('\n\tUnfiltered Analysis...');
         unfiltered = struct;
         
@@ -589,7 +311,7 @@ for nwbI = 1%:numel(nwb_list)
     
     %% shuffled NE
     
-    if string(GRAB) == "GRAB_NE"
+    if string(mouseInfo.GRAB) == "GRAB_NE"
         fprintf('\n\tShuffled Analysis...');
         shuffled = struct;
         
@@ -630,7 +352,7 @@ for nwbI = 1%:numel(nwb_list)
     end
     
     %% NE regression
-    if string(GRAB) == "GRAB_NE"
+    if string(mouseInfo.GRAB) == "GRAB_NE"
         fprintf('\n\tNE regression Analysis...');
         NE_reg = struct;
         
@@ -663,7 +385,7 @@ for nwbI = 1%:numel(nwb_list)
     
     %% frequency-dependent connectivity
     
-    if string(GRAB) == "GRAB_NE"
+    if string(mouseInfo.GRAB) == "GRAB_NE"
         fprintf('\n\tFrequency-dependent connectivity Analysis...');
         labels = {'low','medium','high'};
         fr_range = [0, 0.1;
@@ -694,7 +416,7 @@ for nwbI = 1%:numel(nwb_list)
     
     %% spectra
     
-    if string(GRAB) == "GRAB_NE"
+    if string(mouseInfo.GRAB) == "GRAB_NE"
         fprintf('\n\tSpectral Analysis...');
         spectra = struct;
         
@@ -737,10 +459,17 @@ for nwbI = 1%:numel(nwb_list)
         clear tmp;
     end
     
+    %% plot main figures
+
+    plotFig1(Fig1,files.save);
+    if string(mouseInfo.GRAB) == "GRAB_NE"
+        plotFig2(Fig2,Fig1,shuffled,files.save);
+        plotFig3(Fig3,files.save);
+    end
+    
     %% organize main figures
     
     if saveMetadata
-        parcellation = load(fullfile('/projectnb/devorlab/bcraus/HRF/1P',sessionInfo.Date,mouseInfo.ID,'DataAnalysis','parcells_upd'));
         
         metadata = struct;
         metadata.Mouse = mouseInfo.ID;
@@ -750,9 +479,8 @@ for nwbI = 1%:numel(nwb_list)
         metadata.settings.brain_mask = brain_mask;
         metadata.settings.vessel_mask = vessel_mask;
         metadata.settings.allen_masks = allen_masks;
-        metadata.settings.parcellation = parcellation;
         metadata.upd = '25-06-30';
-        metadata.GRAB = GRAB;
+        metadata.GRAB = mouseInfo.GRAB;
     
         savePath = strsplit(nwb_list(nwbI).Path,'/');
         savePath = char(savePath(end));
@@ -760,10 +488,10 @@ for nwbI = 1%:numel(nwb_list)
         savePath = [savePath '.mat'];
         savePath = fullfile(parentDir,'Analysis',savePath);
         
-        if string(GRAB) == "GRAB_NE"
-            save(savePath,'metadata','Fig1','Fig2','Fig3','Behavior','Hb_model','unfiltered','shuffled','NE_reg','FC_fr','spectra','-v7.3');
+        if string(mouseInfo.GRAB) == "GRAB_NE"
+            save(savePath,'metadata','Fig1','GRAB_FC','Fig2','Fig3','Behavior','Hb_model','unfiltered','shuffled','NE_reg','FC_fr','spectra','-v7.3');
         else
-            save(savePath,'metadata','Fig1','Behavior','-v7.3');
+            save(savePath,'metadata','Fig1','GRAB_FC','Behavior','-v7.3');
         end
         fprintf('\n\tDone!\n');
     end
@@ -776,4 +504,664 @@ function addPaths(mainDir)
     addDirs = addDirs(~cellfun(@(x) any(startsWith(strsplit(x,filesep), '.')), addDirs));
     addDirs = strjoin(addDirs,pathsep);
     addpath(addDirs);
+end
+
+function plotFig1(Fig1,savePath)
+    
+    parentDir = f_path();
+    refBM = load(fullfile(parentDir,'Figures/plot_types/refAllen.mat'));
+    refParcellation = refBM.refParcellation;
+    refBM = refBM.refBM;
+
+    plotBM = refBM;
+    plotBM(:,1:300) = NaN;
+
+    % B
+    t = 0.1:0.1:size(Fig1.Ca_allen,1)/10;
+
+    f = figure(Position=[100 100 1000 800]);
+    tiledlayout(3,1);
+    ax1 = nexttile;hold on;
+    plot(t,Fig1.Ca_allen(:,5),color=c_Ca);
+    plot(t,Fig1.GRAB_allen(:,5)-10,color=c_GRAB);
+    plot(t,Fig1.HbT_allen(:,5)-20,color=c_HbT);
+    legend('Ca^2^+',string(Fig1.GRAB_type),'HbT');
+    ax1.XAxis.Visible = 'off';
+    
+    ax2 = nexttile;hold on;
+    plot(t,Fig1.Ca_allen(:,3),color=c_Ca);
+    plot(t,Fig1.GRAB_allen(:,3)-10,color=c_GRAB);
+    plot(t,Fig1.HbT_allen(:,3)-20,color=c_HbT);
+    ax2.XAxis.Visible = 'off';
+
+    ax3 = nexttile;hold on;
+    plot(t,Fig1.Pupil*0.4+0.6,color=c_pupil);
+    plot(t,rescale(Fig1.Whisking,0.3,0.6),color=[0 0.7 0.7]);
+    plot(t,rescale(Fig1.Accelerometer,0,0.3),color=[0 0 0]);
+    legend('Pupil','Whisking','Movement');
+    ax3.YAxis.Visible = 'off';
+    xlabel('Time (s)');
+
+    set(ax1,'FontSize',14);
+    set(ax2,'FontSize',14);
+    set(ax3,'FontSize',14);
+    
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig1B.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % C
+    f = figure(Position=[100 100 900 400]);
+    tiledlayout(1,2);
+    nexttile;
+    plot(0:0.1:10,Fig1.IRFx1_inv.IRF);
+    box off;
+    xlim([0 7]);
+    xlabel('Time (s)');
+    ylabel('a.u.');
+    set(gca,'FontSize',14);
+
+    nexttile;
+    f_plotMap(f_ImgReg_allen(refParcellation,Fig1.allen_masks,Fig1.IRFx1_inv.perf,0).*plotBM,cmp=cmpvir,bounds=[0 1],title='Global IRF',clabel='r');
+    set(gca,'YDir','reverse');
+    
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig1C.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % D
+    f = figure(Position=[100 100 900 400]);
+    tiledlayout(1,2);
+    nexttile;
+    plot(0:0.1:10,Fig1.IRFx1_SSp.IRF);
+    box off;
+    xlim([0 7]);
+    xlabel('Time (s)');
+    ylabel('a.u.');
+    set(gca,'FontSize',14);
+
+    nexttile;
+    f_plotMap(f_ImgReg_allen(refParcellation,Fig1.allen_masks,Fig1.IRFx1_SSp.perf,0).*plotBM,cmp=cmpvir,bounds=[0 1],title='SSp IRF',clabel='r');
+    set(gca,'YDir','reverse');
+    
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig1D.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % E
+    f = figure(Position=[100 100 900 400]);
+    tiledlayout(1,2);
+    nexttile;hold on;
+    plot(0:0.1:10,mean(Fig1.IRFx1_var.IRF_allen(:,4:5),2),color=c_Orange);
+    plot(0:0.1:10,Fig1.IRFx1_var.IRF_allen(:,2),color=c_darkCyan);
+    legend('SSp-tr/ll','MOs');
+    box off;
+    xlim([0 7]);
+    xlabel('Time (s)');
+    ylabel('a.u.');
+    set(gca,'FontSize',14);
+
+    nexttile;
+    f_plotMap(f_ImgReg_allen(refParcellation,Fig1.allen_masks,Fig1.IRFx1_var.perf,0).*plotBM,cmp=cmpvir,bounds=[0 1],title='Variant IRF',clabel='r');
+    set(gca,'YDir','reverse');
+    
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig1E.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % F
+    
+    f = figure;
+    bar(1:3,[mean(f_ImgReg_allen(refParcellation,Fig1.allen_masks,Fig1.IRFx1_inv.perf,0).*plotBM,'all','omitnan'),mean(f_ImgReg_allen(refParcellation,Fig1.allen_masks,Fig1.IRFx1_SSp.perf,0).*plotBM,'all','omitnan'),mean(f_ImgReg_allen(refParcellation,Fig1.allen_masks,Fig1.IRFx1_var.perf,0).*plotBM,'all','omitnan')],FaceColor=[1,1,1],EdgeColor=c_darkCyan,LineWidth=2);
+    box off;
+    ylabel('Model Performance (r)');
+    set(gca,'XTickLabels',{'global','SSp','variant'},'FontSize',14);
+    
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig1F.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % G
+    
+    pS = struct;
+    pS.xlim = [-4 4];
+
+    lm = fitlm(mean(Fig1.GRAB,2),Fig1.IRFx1_SSp.perf_dt(:,2));
+    lm = table2array(lm.Coefficients);
+
+    f = figure;hold on;
+    scatter(mean(Fig1.GRAB,2),Fig1.IRFx1_SSp.perf_dt(:,2),70,'filled',markerFaceColor=c_Orange);
+    plot(pS.xlim,pS.xlim*lm(2,1)+lm(1,1),'-k','LineWidth',2);
+    xlim(pS.xlim);
+    ylim([-1 1]);
+    xlabel('GRAB (\DeltaF/F)');
+    ylabel('r_S_S_p_-_I_R_F(MOs)');
+    set(gca,'FontSize',14);
+
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig1G.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % H
+    
+    f = figure;
+    f_plotAllenMap(Fig1.SSp_perf_vs_GRAB,cmp=cmpbbr,cLabel='r',mask=plotBM,cRange=0.7*[-1,1]);
+    
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig1H.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % I - can't be calculated with only 1 subject/session
+
+end
+
+function plotFig2(Fig2,Fig1,shuffled,savePath)
+
+    parentDir = f_path();
+    refBM = load(fullfile(parentDir,'Figures/plot_types/refAllen.mat'));
+    refParcellation = refBM.refParcellation;
+    refBM = refBM.refBM;
+
+    plotBM = refBM;
+    plotBM(:,1:300) = NaN;
+
+    % A
+    
+    t = 0.1:0.1:numel(Fig2.NE)/10;
+
+    f = figure(Position=[100 100 1000 800]);
+    tiledlayout(3,1);
+    ax1 = nexttile;hold on;
+    plot(t,Fig2.Ca_norm(:,12),color=c_Ca);
+    plot(t,Fig2.NE-6,color=c_GRAB);
+    plot(t,Fig2.HbT_norm(:,12)-12,color=[c_HbT 0.5]);
+    ax1.XAxis.Visible = 'off';
+    ylabel('Z-Score');
+
+    ax2 = nexttile;hold on;
+    plot(t,Fig2.LR_Ca(:,12),color=c_Ca);
+    plot(t,Fig2.LR_NE(:,12)-6,color=c_GRAB);
+    plot(t,Fig2.HbT_norm(:,12)-12,color=[c_HbT 0.5]);
+    plot(t,Fig2.LR_Ca(:,12)+Fig2.LR_NE(:,12)-12,color=[0 0.8 0.8]);
+    ax2.XAxis.Visible = 'off';
+    ylabel('LR Model');
+
+    ax3 = nexttile;hold on;
+    plot(t,Fig2.IRFx2_Ca(:,12),color=c_Ca);
+    plot(t,Fig2.IRFx2_NE(:,12)-6,color=c_GRAB);
+    plot(t,Fig2.HbT_norm(:,12)-12,color=[c_HbT 0.5]);
+    plot(t,Fig2.IRFx2_Ca(:,12)+Fig2.IRFx2_NE(:,12)-12,color=[0 0.8 0.8]);
+    xlabel('Time (s)');
+    ylabel('IRFx2 Model');
+
+    set(ax1,'FontSize',14);
+    set(ax2,'FontSize',14);
+    set(ax3,'FontSize',14);
+    
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig2A.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % B
+    f = figure(Position=[100 100 900 400]);
+    tiledlayout(1,2);
+    nexttile;
+    f_plotMap(f_ImgReg_allen(refParcellation,Fig2.allen_masks,Fig2.LR.params.A,0).*plotBM,cmp=cmpbbr,bounds=[-1 1],title='A');
+    set(gca,'YDir','reverse');
+
+    nexttile;
+    f_plotMap(f_ImgReg_allen(refParcellation,Fig2.allen_masks,Fig2.LR.params.B,0).*plotBM,cmp=cmpbbr,bounds=[-1 1],title='B');
+    set(gca,'YDir','reverse');
+    
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig2B.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % C
+    f = figure;hold on;
+    bar(1,Fig2.LR.params.tA,FaceColor=[1,1,1],EdgeColor=c_Ca,LineWidth=2);
+    bar(2,Fig2.LR.params.tB,FaceColor=[1,1,1],EdgeColor=c_GRAB,LineWidth=2);
+    legend('t_A','t_B');
+    ylabel('Lag (s)');
+    set(gca,'FontSize',14);
+
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig2C.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % D
+
+    f = figure;
+    f_plotMap(f_ImgReg_allen(refParcellation,Fig2.allen_masks,Fig2.LR.perf,0).*plotBM,cmp=cmpvir,bounds=[0 1],title='LR Performance');
+    set(gca,'YDir','reverse');
+
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig2D.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % E
+    
+    f = figure;
+    f_plotMap(f_ImgReg_allen(refParcellation,Fig2.allen_masks,Fig2.LR.perf-Fig1.IRFx1_inv.perf,0).*plotBM,cmp=cmpbbr,bounds=[-1 1],title='LR vs. Global IRF Performance');
+    set(gca,'YDir','reverse');
+
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig2E.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % F
+    f = figure(Position=[100 100 900 400]);
+    tiledlayout(1,2);
+    nexttile;
+    f_plotMap(f_ImgReg_allen(refParcellation,Fig2.allen_masks,Fig2.IRFx2.params.A,0).*plotBM,cmp=cmpbbr,bounds=[-1 1],title='A');
+    set(gca,'YDir','reverse');
+
+    nexttile;
+    f_plotMap(f_ImgReg_allen(refParcellation,Fig2.allen_masks,Fig2.IRFx2.params.A,0).*plotBM,cmp=cmpbbr,bounds=[-1 1],title='B');
+    set(gca,'YDir','reverse');
+    
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig2F.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % G
+    f = figure;hold on;
+    plot(-5:0.1:10,Fig2.IRFx2.IRF(:,1),color=c_Ca);
+    plot(-5:0.1:10,Fig2.IRFx2.IRF(:,2),color=c_GRAB);
+    legend('IRF_C_a','IRF_N_E');
+    xlabel('Time (s)');
+    ylabel('a.u.');
+    set(gca,'FontSize',14);
+
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig2G.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % H
+
+    f = figure;
+    f_plotMap(f_ImgReg_allen(refParcellation,Fig2.allen_masks,Fig2.IRFx2.perf,0).*plotBM,cmp=cmpvir,bounds=[0 1],title='LR Performance');
+    set(gca,'YDir','reverse');
+
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig2H.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % I
+    
+    f = figure;
+    f_plotMap(f_ImgReg_allen(refParcellation,Fig2.allen_masks,Fig2.IRFx2.perf-Fig1.IRFx1_inv.perf,0).*plotBM,cmp=cmpbbr,bounds=[-1 1],title='LR vs. Global IRF Performance');
+    set(gca,'YDir','reverse');
+
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig2I.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % J
+    
+    f = figure(Position=[100 100 900 400]);
+    tiledlayout(1,2);
+    nexttile;
+    f_plotMap(f_ImgReg_allen(refParcellation,Fig2.allen_masks,shuffled.summary.LR.perf,0).*plotBM,cmp=cmpvir,bounds=[0 1],title='Shuffled LR');
+    set(gca,'YDir','reverse');
+
+    nexttile;
+    f_plotMap(f_ImgReg_allen(refParcellation,Fig2.allen_masks,shuffled.summary.IRFx2.perf,0).*plotBM,cmp=cmpvir,bounds=[0 1],title='Shuffled IRFx2');
+    set(gca,'YDir','reverse');
+    
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig2J.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % K
+
+    b = [];
+    b(1) = mean(f_ImgReg_allen(refParcellation,Fig2.allen_masks,Fig1.IRFx1_inv.perf,0).*plotBM,'all','omitnan');
+    b(2) = mean(f_ImgReg_allen(refParcellation,Fig2.allen_masks,Fig1.IRFx1_SSp.perf,0).*plotBM,'all','omitnan');
+    b(3) = mean(f_ImgReg_allen(refParcellation,Fig2.allen_masks,Fig1.IRFx1_var.perf,0).*plotBM,'all','omitnan');
+    b(4) = mean(f_ImgReg_allen(refParcellation,Fig2.allen_masks,Fig2.LR.perf,0).*plotBM,'all','omitnan');
+    b(5) = mean(f_ImgReg_allen(refParcellation,Fig2.allen_masks,Fig2.IRFx2.perf,0).*plotBM,'all','omitnan');
+    b(6) = mean(f_ImgReg_allen(refParcellation,Fig2.allen_masks,shuffled.summary.LR.perf,0).*plotBM,'all','omitnan');
+    b(7) = mean(f_ImgReg_allen(refParcellation,Fig2.allen_masks,shuffled.summary.IRFx2.perf,0).*plotBM,'all','omitnan');
+
+    f = figure;
+    bar(1:7,b,FaceColor=[1,1,1],EdgeColor=c_darkCyan,LineWidth=2);
+    box off;
+    ylabel('Model Performance (r)');
+    set(gca,'XTickLabels',{'global','SSp','variant','LR','IRFx2','shuffled LR','shuffled IRFx2'},'FontSize',14);
+
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig2K.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+end
+
+function plotFig3(Fig3,savePath)
+
+    parentDir = f_path();
+    refBM = load(fullfile(parentDir,'Figures/plot_types/refAllen.mat'));
+    refParcellation = refBM.refParcellation;
+    refBM = refBM.refBM;
+
+    plotBM = refBM;
+    plotBM(:,1:300) = NaN;
+
+    t = 0.1:0.1:size(Fig3.Ca,1)/10;
+
+    % A
+    f = figure(Position=[100 100 800 800]);
+    tiledlayout(4,1);
+    ax1 = nexttile;hold on;
+    plot(t,Fig3.HbT(:,2),color=c_HbT*0.7);
+    plot(t,Fig3.HbT(:,5)-10,color=c_HbT*1.2);
+    ax1.XAxis.Visible = 'off';
+    ylabel('HbT');
+    
+    ax2 = nexttile;hold on;
+    plot(t,Fig3.Ca(:,2),color=c_Ca*0.7);
+    plot(t,Fig3.Ca(:,5)-10,color=c_Ca*1.2);
+    ax2.XAxis.Visible = 'off';
+    ylabel('Ca^2^+');
+
+    ax3 = nexttile;hold on;
+    plot(t,Fig3.HbT(:,2),color=c_GRAB*0.7);
+    plot(t,Fig3.HbT(:,5)-10,color=c_GRAB*1.2);
+    ax3.XAxis.Visible = 'off';
+    ylabel('NE');
+
+    ax4 = nexttile;hold on;
+    plot(t,Fig3.Pupil*0.4+0.6,color=c_pupil);
+    plot(t,rescale(Fig3.Whisking,0.3,0.6),color=[0 0.7 0.7]);
+    plot(t,rescale(Fig3.Accelerometer,0,0.3),color=[0 0 0]);
+    legend('Pupil','Whisking','Movement');
+    ax4.YAxis.Visible = 'off';
+    xlabel('Time (s)');
+
+    set(ax1,'FontSize',14);
+    set(ax2,'FontSize',14);
+    set(ax3,'FontSize',14);
+    set(ax4,'FontSize',14);
+
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig3A.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % B
+    
+    f = figure(Position=[100 100 800 300]);hold on;
+    plot(15:6:size(Fig3.Ca,1)/10-15,squeeze(Fig3.FC.Ca(2,5,:)),color=c_Ca);
+    plot(15:6:size(Fig3.Ca,1)/10-15,squeeze(Fig3.FC.HbT(2,5,:)),color=c_HbT);
+    ylim([0 1]);
+    box off;
+    xlabel('Time (s)');
+    ylabel('r');
+    legend('FC_C_a(MOs,SSp-ll)','FC_H_b_T(MOs,SSp-ll)')
+    set(gca,'FontSize',14);
+    
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig3B.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % C
+
+    f = figure(Position=[100 100 800 300]);
+    plot(15:6:size(Fig3.Ca,1)/10-15,Fig3.FC.Ca_vs_HbT,color=c_darkCyan);
+    ylim([0 1]);
+    box off;
+    xlabel('Time (s)');
+    ylabel('r');
+    set(gca,'FontSize',14);
+
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig3C.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % D
+    
+    pS = struct;
+    pS.xlim = [-4 4];
+
+    f = figure(Position=[100 100 900 400]);
+    tiledlayout(1,2);
+    nexttile;hold on;
+    scatter(Fig3.GRAB,squeeze(Fig3.FC.Ca(2,5,:)),70,'filled',markerFaceColor=c_Orange);
+    lm = fitlm(Fig3.GRAB,squeeze(Fig3.FC.Ca(2,5,:)));
+    lm = table2array(lm.Coefficients);
+    plot(pS.xlim,pS.xlim*lm(2,1)+lm(1,1),'-k','LineWidth',2);
+    xlabel('Norepinephrine (\DeltaF/F)');
+    ylabel('FC_C_a(MOs,SSp-ll)');
+    set(gca,'FontSize',14);
+
+    nexttile;hold on;
+    scatter(Fig3.GRAB,squeeze(Fig3.FC.HbT(2,5,:)),70,'filled',markerFaceColor=c_Orange);
+    lm = fitlm(Fig3.GRAB,squeeze(Fig3.FC.HbT(2,5,:)));
+    lm = table2array(lm.Coefficients);
+    plot(pS.xlim,pS.xlim*lm(2,1)+lm(1,1),'-k','LineWidth',2);
+    xlabel('Norepinephrine (\DeltaF/F)');
+    ylabel('FC_H_b_T(MOs,SSp-ll)');
+    set(gca,'FontSize',14);
+    
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig3D.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % E
+    
+    pS = struct;
+    pS.xlim = [-4 4];
+
+    f = figure;hold on;
+    scatter(Fig3.GRAB,Fig3.FC.Ca_vs_HbT,70,'filled',markerFaceColor=c_Orange);
+    lm = fitlm(Fig3.GRAB,Fig3.FC.Ca_vs_HbT);
+    lm = table2array(lm.Coefficients);
+    plot(pS.xlim,pS.xlim*lm(2,1)+lm(1,1),'-k','LineWidth',2);
+    xlabel('Norepinephrine (\DeltaF/F)');
+    ylabel('r(FC_C_a,FC_H_b_T)');
+    set(gca,'FontSize',14);
+
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig3E.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % F
+    
+    f = figure;hold on;
+    bar(1,Fig3.r.FC_Ca_vs_GRAB(2,5),FaceColor=[1,1,1],EdgeColor=c_Ca,LineWidth=2);
+    bar(2,Fig3.r.FC_HbT_vs_GRAB(2,5),FaceColor=[1,1,1],EdgeColor=c_HbT,LineWidth=2);
+    bar(3,Fig3.r.FC_Ca_HbT_vs_GRAB,FaceColor=[1,1,1],EdgeColor=c_darkCyan,LineWidth=2);
+    box off;
+    ylabel('NE vs. FC (r)');
+    legend('FC_C_a(MOs,SSp-ll)','FC_H_b_T(MOs,SSp-ll)','r(FC_C_a,FC_H_b_T)');
+    set(gca,'FontSize',14);
+    ax = gca;
+    ax.XAxis.Visible = 'off';
+
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig3F.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % G
+    f = figure(Position=[100 100 1300 400]);
+    tiledlayout(1,3);
+    nexttile;
+    f_plotFC(Fig3.lowNE_FC.Ca,1,cmp=cmpvir,bounds=[0 1],title='Low NE Ca++ Connectivity',clabel='r');
+    
+    nexttile;
+    f_plotFC(Fig3.highNE_FC.Ca,1,cmp=cmpvir,bounds=[0 1],title='High NE Ca++ Connectivity',clabel='r');
+    
+    ax3 = nexttile;
+    f_plotFC(Fig3.highNE_FC.Ca-Fig3.lowNE_FC.Ca,1,cmp=cmpvir,bounds=0.25*[-1 1],title='High - Low NE Ca++ Connectivity',clabel='\Deltar');
+    colormap(ax3,cmpbbr);
+
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig3G.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    % H
+    f = figure(Position=[100 100 1300 400]);
+    tiledlayout(1,3);
+    nexttile;
+    f_plotFC(Fig3.lowNE_FC.HbT,1,cmp=cmpvir,bounds=[0 1],title='Low NE HbT Connectivity',clabel='r');
+    
+    nexttile;
+    f_plotFC(Fig3.highNE_FC.HbT,1,cmp=cmpvir,bounds=[0 1],title='High NE HbT Connectivity',clabel='r');
+    
+    ax3 = nexttile;
+    f_plotFC(Fig3.highNE_FC.HbT-Fig3.lowNE_FC.HbT,1,cmp=cmpvir,bounds=0.25*[-1 1],title='High - Low NE HbT Connectivity',clabel='\Deltar');
+    colormap(ax3,cmpbbr);
+
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig3H.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    %% I
+    low = Fig3.lowNE_FC.Ca;
+    high = Fig3.highNE_FC.Ca;
+    
+    combMap = [];
+    tmpMask = NaN(size(refBM));
+    
+    combDiffMap = [];
+
+    for i = [2,5,12]
+        colMap = [];
+        
+        for rIdx = 1:12
+            tmpMask(refParcellation.Masks(:,:,rIdx,2)) = low(i,rIdx);
+        end
+        colMap = tmpMask.*refBM;
+
+        for rIdx = 1:12
+            tmpMask(refParcellation.Masks(:,:,rIdx,2)) = high(i,rIdx);
+        end
+        colMap = [colMap;tmpMask.*refBM];
+        colMap = colMap(:,301:end);
+
+        combMap = [combMap colMap];
+
+        for rIdx = 1:12
+            tmpMask(refParcellation.Masks(:,:,rIdx,2)) = high(i,rIdx)-low(i,rIdx);
+        end
+        cropImg = tmpMask.*refBM;
+        cropImg = cropImg(:,301:end);
+
+        combDiffMap = [combDiffMap cropImg];
+
+    end
+
+    f = figure(Position=[100 100 600 800]);
+    tiledlayout(3,1);
+    ax1 = nexttile([2,1]);
+    imagesc(combMap,AlphaData=~isnan(combMap));
+    axis image off;
+    c = colorbar;
+    colormap cmpvir;
+    c.Label.String = 'r';
+    title('MOs        SSp-ll        VISp')
+    clim([0 1]);
+
+    ax2 = nexttile;
+    imagesc(combDiffMap,AlphaData=~isnan(combDiffMap));
+    axis image off;
+    c = colorbar;
+    clim(0.25*[-1 1]);
+    c.Label.String = '\Deltar';
+    colormap(ax2,cmpbbr);
+
+    set(ax1,'FontSize',14);
+    set(ax2,'FontSize',14);
+
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig3I.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
+    %% J
+    low = Fig3.lowNE_FC.HbT;
+    high = Fig3.highNE_FC.HbT;
+    
+    combMap = [];
+    tmpMask = NaN(size(refBM));
+    
+    combDiffMap = [];
+
+    for i = [2,5,12]
+        colMap = [];
+        
+        for rIdx = 1:12
+            tmpMask(refParcellation.Masks(:,:,rIdx,2)) = low(i,rIdx);
+        end
+        colMap = tmpMask.*refBM;
+
+        for rIdx = 1:12
+            tmpMask(refParcellation.Masks(:,:,rIdx,2)) = high(i,rIdx);
+        end
+        colMap = [colMap;tmpMask.*refBM];
+        colMap = colMap(:,301:end);
+
+        combMap = [combMap colMap];
+
+        for rIdx = 1:12
+            tmpMask(refParcellation.Masks(:,:,rIdx,2)) = high(i,rIdx)-low(i,rIdx);
+        end
+        cropImg = tmpMask.*refBM;
+        cropImg = cropImg(:,301:end);
+
+        combDiffMap = [combDiffMap cropImg];
+
+    end
+
+    f = figure(Position=[100 100 600 800]);
+    tiledlayout(3,1);
+    ax1 = nexttile([2,1]);
+    imagesc(combMap,AlphaData=~isnan(combMap));
+    axis image off;
+    c = colorbar;
+    colormap cmpvir;
+    c.Label.String = 'r';
+    title('MOs        SSp-ll        VISp')
+    clim([0 1]);
+
+    ax2 = nexttile;
+    imagesc(combDiffMap,AlphaData=~isnan(combDiffMap));
+    axis image off;
+    c = colorbar;
+    clim(0.1*[-1 1]);
+    c.Label.String = '\Deltar';
+    colormap(ax2,cmpbbr);
+
+    set(ax1,'FontSize',14);
+    set(ax2,'FontSize',14);
+
+    if savePath
+        exportgraphics(f,fullfile(savePath,'Fig3J.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+    end
+
 end

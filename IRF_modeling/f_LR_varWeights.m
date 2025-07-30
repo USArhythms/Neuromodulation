@@ -1,4 +1,4 @@
-function [perf,outParams] = f_LR_varWeights(HbT,Ca,NE,win,fs, ...
+function [perf,outParams,conv_Ca,conv_NE] = f_LR_varWeights(HbT,Ca,NE,win,fs, ...
     brain_mask,ds,maxThreads,initialParam)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Performs optimization of linear regression weights and lags to predict 
@@ -129,7 +129,11 @@ outParams.A = LR(:,:,1);
 outParams.B = LR(:,:,2);
 
 %% calculate performance
-pred_HbT = conv_Ca.*LR(:,:,1)+conv_NE.*LR(:,:,2);
+
+conv_Ca = conv_Ca.*LR(:,:,1);
+conv_NE = conv_NE.*LR(:,:,2);
+
+pred_HbT = conv_Ca+conv_NE;
 
 perf = f_corr(HbT./std(HbT,0,3),pred_HbT,3);
 
