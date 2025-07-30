@@ -4,7 +4,7 @@ function [regImg,regFactor] = f_ImgReg_allen(refParcellation,parcellationStruct,
 % parcells2 = comb.allen{1};
 % img = comb.vis{1};
 
-
+if 
 L = sum(parcellationStruct.Masks(:,:,:,1),'all');
 R = sum(parcellationStruct.Masks(:,:,:,2),'all');
 

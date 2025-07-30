@@ -1,7 +1,9 @@
 %% organize data
 
 [log, order, settings, Fig1, Fig2, Fig3, Behavior, Hb_model, unfiltered, shuffled, NE_reg, spectra, FC_fr, GRAB_FC] = f_organizeData('/projectnb/devorlab/bcraus/AnalysisCode/Neuromodulation/Analysis');
-load('/projectnb/devorlab/bcraus/refAllen.mat');
+
+parentDir = f_path();
+load(fullfile(parentDir,'Figures/plot_types/refAllen.mat'));
 
 M = numel(order);
 

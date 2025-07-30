@@ -10,3 +10,8 @@ Used in:
 Contents:
 
 MAIN.m - main script which analyzes data for main figures
+
+Utilizes spectral analysis functions *mtspectrumc* and *coherencyc* from the Chronux toolbox (1).
+
+References:
+1. H. Bokil et al., "Chronux: a platform for analyzing neural signals," *J Neurosci Methods* **192**(1), 146-151 (2010).

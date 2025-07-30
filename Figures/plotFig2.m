@@ -161,3 +161,5 @@ f = figure;
 [dataMean, dataSEM] = f_plotBar(barData,colors=[repmat(c_Yellow,3,1);repmat(c_darkCyan,2,1);repmat(c_pupil,2,1)],legend={'Invariant','SSp','Variant','LR','IRFx2','shuffled LR','shuffled IRFx2'},ylabel='r',title='Model Performance Comparison');
 
 [h,p] = f_kstest(barData,0.01);
+
+p = f_SRtest(barData,0.01);

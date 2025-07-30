@@ -58,7 +58,6 @@ session = strsplit(nwb.identifier,'/');
 sessionInfo.Mouse = session{1};
 sessionInfo.Date = session{2};
 sessionInfo.Run = sscanf(session{3},'Run%d');
-sessionInfo.interRun = sscanf(session{4},'IR%d');
 
 %% extract behavior video
 

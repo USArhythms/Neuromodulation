@@ -2,44 +2,36 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 %          Main Processing Script for Neuromodulation Analysis
-%
-% Reads nwb files located at https://dandiarchive.org/dandiset/001211
+% 
+% Reads nwb files located at https://dandiarchive.org/dandiset/001543 and
+% performs IRF modeling, functional connectivity, and spectral analysis.
 
 %% add path to local matNWB installation and child directories
+
+parentDir = f_path();
 
 % ignore if matNWB is installed via MATLAB
 addpath('/projectnb/devorlab/bcraus/AnalysisCode/new_processing/matnwb');
 
-addPaths(fileparts(mfilename('fullpath')));
+addPaths(parentDir);
 
 %% load nwb file and extract relevant variables
 
 % local path to nwb file directory (load from DANDI archives)
-nwbDir = '/projectnb/devorlab/bcraus/AnalysisCode/NWB/nwb_files_HD';
+nwbDir = fullfile(parentDir,'data');
 nwb_list = f_sortNWB(nwbDir);
 
-%% check for analyzed runs
+saveMetadata = false;
 
-N = numel(nwb_list);
-processed = false(N,1);
+%%
 
-for i = 1:N
-    savePath = strsplit(nwb_list(i).Path,'/');
-    savePath = char(savePath(end));
-    savePath = savePath(1:end-4);
-    savePath = [savePath '.mat'];
-    savePath = fullfile('/projectnb/devorlab/bcraus/AnalysisCode/Neuromodulation/Analysis',savePath);
-
-    if f_checkFile(savePath)
-        processed(i) = true;
-    end
-end
-
-indices = find(~processed)';
+files = struct;
+files.save = fullfile(parentDir,'results');
+load(fullfile(parentDir,'Figures/plot_types/refAllen.mat'));
 
 %%
 % temporary index to analyze only a single run
-for nwbI = indices
+for nwbI = 1%:numel(nwb_list)
 
     fprintf(['Analyzing ', nwb_list(nwbI).Path, '...']);
 
@@ -62,7 +54,7 @@ for nwbI = indices
     Fig1.perf_dt_win = corrWin;
     
     % low pass filter HbT below 0.5 Hz, for unfiltered use HbT
-    HbT_low = f_bpf(HbT,[0, 0.5],fs,3);
+    HbT_low = f_bpf(HbT,[0,0.5],fs,3);
     
     % estimate invariant single IRF models
     [Fig1.IRFx1_inv.perf,Fig1.IRFx1_inv.IRF,Fig1.IRFx1_inv.params,tmpCorr] = f_1xIRF(HbT_low,rfp_HD,win,fs,brain_mask,4,corrWin*fs,numThreads);
@@ -95,6 +87,95 @@ for nwbI = indices
     
     Fig1.SSp_perf_vs_GRAB = f_corr(Fig1.GRAB, Fig1.IRFx1_SSp.perf_dt, 1)';
     
+    %% plot Fig 1
+
+    % C
+    f = figure(Position=[100 100 900 400]);
+    tiledlayout(1,2);
+    nexttile;
+    plot(0:0.1:10,Fig1.IRFx1_inv.IRF);
+    box off;
+    xlim([0 7]);
+    xlabel('Time (s)');
+    ylabel('a.u.');
+    set(gca,'FontSize',14);
+
+    nexttile;
+    f_plotMap(Fig1.IRFx1_inv.perf.*brain_mask,cmp=cmpvir,bounds=[0 1],title='Global IRF',clabel='r');
+    set(gca,'YDir','reverse');
+    
+    exportgraphics(f,fullfile(files.save,'Fig1C.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+    close(f);
+
+    % D
+    f = figure(Position=[100 100 900 400]);
+    tiledlayout(1,2);
+    nexttile;
+    plot(0:0.1:10,Fig1.IRFx1_SSp.IRF);
+    box off;
+    xlim([0 7]);
+    xlabel('Time (s)');
+    ylabel('a.u.');
+    set(gca,'FontSize',14);
+
+    nexttile;
+    f_plotMap(Fig1.IRFx1_SSp.perf.*brain_mask,cmp=cmpvir,bounds=[0 1],title='SSp IRF',clabel='r');
+    set(gca,'YDir','reverse');
+    
+    exportgraphics(f,fullfile(files.save,'Fig1D.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+    close(f);
+
+    % E
+    f = figure(Position=[100 100 900 400]);
+    tiledlayout(1,2);
+    nexttile;hold on;
+    plot(0:0.1:10,mean(Fig1.IRFx1_var.IRF_allen(:,4:5),2),color=c_Orange);
+    plot(0:0.1:10,Fig1.IRFx1_var.IRF_allen(:,2),color=c_darkCyan);
+    legend('SSp-tr/ll','MOs');
+    box off;
+    xlim([0 7]);
+    xlabel('Time (s)');
+    ylabel('a.u.');
+    set(gca,'FontSize',14);
+
+    nexttile;
+    f_plotMap(Fig1.IRFx1_var.perf.*brain_mask,cmp=cmpvir,bounds=[0 1],title='Variant IRF',clabel='r');
+    set(gca,'YDir','reverse');
+    
+    exportgraphics(f,fullfile(files.save,'Fig1E.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+    close(f);
+
+    % G
+    
+    pS = struct;
+    pS.xlim = [-4 4];
+
+    lm = fitlm(mean(Fig1.GRAB,2),Fig1.IRFx1_SSp.perf_dt(:,2));
+    lm = table2array(lm.Coefficients);
+
+    f = figure;hold on;
+    scatter(mean(Fig1.GRAB,2),Fig1.IRFx1_SSp.perf_dt(:,2),70,'filled',markerFaceColor=c_Orange);
+    plot(pS.xlim,pS.xlim*lm(2,1)+lm(1,1),'-k','LineWidth',2);
+    xlim(pS.xlim);
+    ylim([-1 1]);
+    xlabel('GRAB (\DeltaF/F)');
+    ylabel('r_S_S_p_-_I_R_F(MOs)');
+    set(gca,'FontSize',14);
+
+    exportgraphics(f,fullfile(files.save,'Fig1G.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+    close(f);
+
+    % H
+    
+    plotBM = refBM;
+    plotBM(:,1:300) = 0;
+
+    f = figure;
+    f_plotAllenMap(Fig1.SSp_perf_vs_GRAB,cmp=cmpbbr,cLabel='r',mask=plotBM,cRange=0.7*[-1,1]);
+    
+    exportgraphics(f,fullfile(files.save,'Fig1H.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+    close(f);
+
     %% GRAB connectivity
 
     GRAB_FC = struct;
@@ -120,36 +201,131 @@ for nwbI = indices
         
         HbT_low = f_bpf(HbT,[0, 0.5],fs,3);
         
-        % estimate linear regression model
-        
+        globalNE = mean(gfp_HD./std(gfp_HD,0,3).*brain_mask.*vessel_mask,[1,2],'omitnan');
+
         Fig2.LR = struct;
-        [Fig2.LR.perf,Fig2.LR.params] = f_LR_varWeights(HbT_low,rfp_HD,gfp_HD,win,fs,brain_mask,ds,numThreads);
+        Fig2.NE = squeeze(globalNE);
+
+        % estimate linear regression model
+
+        [Fig2.LR.perf,Fig2.LR.params] = f_LR_varWeights(HbT_low,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
         
         % estimate double IRF model - varying weights
         
         Fig2.IRFx2 = struct;
-        [Fig2.IRFx2.perf,Fig2.IRFx2.IRF,Fig2.IRFx2.params] = f_2alphaDeconvolve(HbT_low,rfp_HD,gfp_HD,win,fs,brain_mask,ds,numThreads);
+        [Fig2.IRFx2.perf,Fig2.IRFx2.IRF,Fig2.IRFx2.params] = f_2alphaDeconvolve(HbT_low,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
         Fig2.IRFx2.params.A = Fig2.IRFx2.params.A*sum(Fig2.IRFx2.IRF(:,1));
         Fig2.IRFx2.params.B = Fig2.IRFx2.params.B*sum(Fig2.IRFx2.IRF(:,2));
-
-        % repeat for global NE
-        
-        globalNE = mean(gfp_HD./std(gfp_HD,0,3).*brain_mask.*vessel_mask,[1,2],'omitnan');
-
-        Fig2.global.LR = struct;
-        Fig2.global.NE = squeeze(globalNE);
-
-        [Fig2.global.LR.perf,Fig2.global.LR.params] = f_LR_varWeights(HbT_low,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
-        
-        % estimate double IRF model - varying weights
-        
-        Fig2.global.IRFx2 = struct;
-        [Fig2.global.IRFx2.perf,Fig2.global.IRFx2.IRF,Fig2.global.IRFx2.params] = f_2alphaDeconvolve(HbT_low,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
-        Fig2.global.IRFx2.params.A = Fig2.global.IRFx2.params.A*sum(Fig2.global.IRFx2.IRF(:,1));
-        Fig2.global.IRFx2.params.B = Fig2.global.IRFx2.params.B*sum(Fig2.global.IRFx2.IRF(:,2));
     
     end
     
+    %% plot Fig 2
+    
+    if string(GRAB) == "GRAB_NE"
+        % B
+        f = figure(Position=[100 100 900 400]);
+        tiledlayout(1,2);
+        nexttile;
+        f_plotMap(Fig2.LR.params.A.*brain_mask,cmp=cmpbbr,bounds=[-1 1],title='A');
+        set(gca,'YDir','reverse');
+    
+        nexttile;
+        f_plotMap(Fig2.LR.params.B.*brain_mask,cmp=cmpbbr,bounds=[-1 1],title='B');
+        set(gca,'YDir','reverse');
+        
+        exportgraphics(f,fullfile(files.save,'Fig2B.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+
+        % C
+        f = figure;hold on;
+        bar(1,Fig2.LR.params.tA,FaceColor=[1,1,1],EdgeColor=c_Ca,LineWidth=2);
+        bar(2,Fig2.LR.params.tB,FaceColor=[1,1,1],EdgeColor=c_GRAB,LineWidth=2);
+        legend('t_A','t_B');
+        ylabel('Lag (s)');
+        set(gca,'FontSize',14);
+
+        exportgraphics(f,fullfile(files.save,'Fig2C.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+
+        % D
+
+        f = figure;
+        f_plotMap(Fig2.LR.perf.*brain_mask,cmp=cmpvir,bounds=[0 1],title='LR Performance');
+        set(gca,'YDir','reverse');
+    
+        exportgraphics(f,fullfile(files.save,'Fig2D.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+
+        % E
+
+        f = figure;
+        f_plotMap((Fig2.LR.perf-Fig1.IRFx1_inv.perf).*brain_mask,cmp=cmpbbr,bounds=[-1 1],title='LR vs. Global IRF Performance');
+        set(gca,'YDir','reverse');
+    
+        exportgraphics(f,fullfile(files.save,'Fig2E.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+
+        % F
+        f = figure(Position=[100 100 900 400]);
+        tiledlayout(1,2);
+        nexttile;
+        f_plotMap(Fig2.IRFx2.params.A.*brain_mask,cmp=cmpbbr,bounds=[-1 1],title='A');
+        set(gca,'YDir','reverse');
+    
+        nexttile;
+        f_plotMap(Fig2.IRFx2.params.B.*brain_mask,cmp=cmpbbr,bounds=[-1 1],title='B');
+        set(gca,'YDir','reverse');
+        
+        exportgraphics(f,fullfile(files.save,'Fig2F.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+
+        % G
+        f = figure;hold on;
+        plot(-5:0.1:10,Fig2.IRFx2.IRF(:,1),color=c_Ca);
+        plot(-5:0.1:10,Fig2.IRFx2.IRF(:,2),color=c_GRAB);
+        legend('IRF_C_a','IRF_N_E');
+        xlabel('Time (s)');
+        ylabel('a.u.');
+        set(gca,'FontSize',14);
+
+        exportgraphics(f,fullfile(files.save,'Fig2G.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+
+        % H
+
+        f = figure;
+        f_plotMap(Fig2.IRFx2.perf.*brain_mask,cmp=cmpvir,bounds=[0 1],title='LR Performance');
+        set(gca,'YDir','reverse');
+    
+        exportgraphics(f,fullfile(files.save,'Fig2H.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+
+        % I
+
+        f = figure;
+        f_plotMap((Fig2.IRFx2.perf-Fig1.IRFx1_inv.perf).*brain_mask,cmp=cmpbbr,bounds=[-1 1],title='LR vs. Global IRF Performance');
+        set(gca,'YDir','reverse');
+    
+        exportgraphics(f,fullfile(files.save,'Fig2I.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+        
+        % J
+        
+        f = figure(Position=[100 100 900 400]);
+        tiledlayout(1,2);
+        nexttile;
+        f_plotMap(shuffled.summary.LR.perf.*brain_mask,cmp=cmpvir,bounds=[0 1],title='Shuffled LR');
+        set(gca,'YDir','reverse');
+    
+        nexttile;
+        f_plotMap(shuffled.summary.IRFx2.perf.*brain_mask,cmp=cmpvir,bounds=[0 1],title='Shuffled IRFx2');
+        set(gca,'YDir','reverse');
+        
+        exportgraphics(f,fullfile(files.save,'Fig2J.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+
+    end
+
     %% perform analysis for Fig 3
     
     if string(GRAB) == "GRAB_NE"
@@ -203,6 +379,116 @@ for nwbI = indices
         Fig3.r.FC_Ca_vs_GRAB = f_corr(Fig3.FC.Ca,permute(Fig3.GRAB,[2, 3, 1]),3);
         Fig3.r.FC_HbT_vs_GRAB = f_corr(Fig3.FC.HbT,permute(Fig3.GRAB,[2, 3, 1]),3);
         Fig3.r.FC_Ca_HbT_vs_GRAB = f_corr(Fig3.FC.Ca_vs_HbT,Fig3.GRAB,1);
+    end
+
+    %% plot Fig 3
+    
+    if string(GRAB) == "GRAB_NE"
+        % D
+        
+        pS = struct;
+        pS.xlim = [-4 4];
+
+        f = figure(Position=[100 100 900 400]);
+        tiledlayout(1,2);
+        nexttile;hold on;
+        scatter(Fig3.GRAB,squeeze(Fig3.FC.Ca(2,5,:)),70,'filled',markerFaceColor=c_Orange);
+        lm = fitlm(Fig3.GRAB,squeeze(Fig3.FC.Ca(2,5,:)));
+        lm = table2array(lm.Coefficients);
+        plot(pS.xlim,pS.xlim*lm(2,1)+lm(1,1),'-k','LineWidth',2);
+        xlabel('Norepinephrine (\DeltaF/F)');
+        ylabel('FC_C_a(MOs,SSp-ll)');
+        set(gca,'FontSize',14);
+    
+        nexttile;hold on;
+        scatter(Fig3.GRAB,squeeze(Fig3.FC.HbT(2,5,:)),70,'filled',markerFaceColor=c_Orange);
+        lm = fitlm(Fig3.GRAB,squeeze(Fig3.FC.HbT(2,5,:)));
+        lm = table2array(lm.Coefficients);
+        plot(pS.xlim,pS.xlim*lm(2,1)+lm(1,1),'-k','LineWidth',2);
+        xlabel('Norepinephrine (\DeltaF/F)');
+        ylabel('FC_H_b_T(MOs,SSp-ll)');
+        set(gca,'FontSize',14);
+        
+        exportgraphics(f,fullfile(files.save,'Fig3D.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+
+        % E
+        
+        pS = struct;
+        pS.xlim = [-4 4];
+
+        f = figure;hold on;
+        scatter(Fig3.GRAB,Fig3.FC.Ca_vs_HbT,70,'filled',markerFaceColor=c_Orange);
+        lm = fitlm(Fig3.GRAB,Fig3.FC.Ca_vs_HbT);
+        lm = table2array(lm.Coefficients);
+        plot(pS.xlim,pS.xlim*lm(2,1)+lm(1,1),'-k','LineWidth',2);
+        xlabel('Norepinephrine (\DeltaF/F)');
+        ylabel('r(FC_C_a,FC_H_b_T)');
+        set(gca,'FontSize',14);
+
+        exportgraphics(f,fullfile(files.save,'Fig3E.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+
+        % G
+        f = figure(Position=[100 100 1300 400]);
+        tiledlayout(1,3);
+        nexttile;
+        f_plotFC(Fig3.lowNE_FC.Ca,1,cmp=cmpvir,bounds=[0 1],title='Low NE Ca++ Connectivity',clabel='r');
+        
+        nexttile;
+        f_plotFC(Fig3.highNE_FC.Ca,1,cmp=cmpvir,bounds=[0 1],title='High NE Ca++ Connectivity',clabel='r');
+        
+        ax3 = nexttile;
+        f_plotFC(Fig3.highNE_FC.Ca-Fig3.lowNE_FC.Ca,1,cmp=cmpvir,bounds=0.25*[-1 1],title='High - Low NE Ca++ Connectivity',clabel='\Deltar');
+        colormap(ax3,cmpbbr);
+
+        exportgraphics(f,fullfile(files.save,'Fig3G.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+
+        % H
+        f = figure(Position=[100 100 1300 400]);
+        tiledlayout(1,3);
+        nexttile;
+        f_plotFC(Fig3.lowNE_FC.HbT,1,cmp=cmpvir,bounds=[0 1],title='Low NE HbT Connectivity',clabel='r');
+        
+        nexttile;
+        f_plotFC(Fig3.highNE_FC.HbT,1,cmp=cmpvir,bounds=[0 1],title='High NE HbT Connectivity',clabel='r');
+        
+        ax3 = nexttile;
+        f_plotFC(Fig3.highNE_FC.HbT-Fig3.lowNE_FC.HbT,1,cmp=cmpvir,bounds=0.25*[-1 1],title='High - Low NE HbT Connectivity',clabel='\Deltar');
+        colormap(ax3,cmpbbr);
+
+        exportgraphics(f,fullfile(files.save,'Fig3H.png'),'Resolution',300,'BackgroundColor',[1 1 1]);
+        close(f);
+
+        %% I
+        low = Fig3.lowNE_FC.Ca;
+        high = Fig3.highNE_FC.Ca;
+        diffMap = high-low;
+
+        f = figure;
+        tl = tiledlayout(3,3);
+        tl.TileSpacing = 'compact';
+        tl.Padding = 'compact';
+        ax = [];
+        for i = [2,5,12]
+            nexttile;
+            f_plotAllenMap(low(:,i),cmp=cmpvir,cLabel='r',mask=plotBM,cRange=[0,1]);
+            colorbar off;
+
+            nexttile;
+            f_plotAllenMap(high(:,i),cmp=cmpvir,cLabel='r',mask=plotBM,cRange=[0,1]);
+            colorbar off;
+
+            ax(i) = nexttile;
+            f_plotAllenMap(diffMap(:,i),cmp=cmpvir,cLabel='r',mask=plotBM,cRange=0.25*[-1,1]);
+            colorbar off;
+
+        end
+        colormap(ax(2),cmpbbr);
+        colormap(ax(5),cmpbbr);
+        colormap(ax(12),cmpbbr);
+
     end
     
     %% analysis for behavior supplementary
@@ -258,19 +544,21 @@ for nwbI = indices
         
         Hb_model.irf_win = win;
         
+        globalNE = mean(gfp_HD./std(gfp_HD,0,3).*brain_mask.*vessel_mask,[1,2],'omitnan');
+
         % HbO
         HbO_low = f_bpf(HbO,[0, 0.5],fs,3);
-        [Hb_model.HbO.LR.perf,Hb_model.HbO.LR.params] = f_LR_varWeights(HbO_low,rfp_HD,gfp_HD,win,fs,brain_mask,ds,numThreads);
+        [Hb_model.HbO.LR.perf,Hb_model.HbO.LR.params] = f_LR_varWeights(HbO_low,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
         
-        [Hb_model.HbO.IRFx2.perf,Hb_model.HbO.IRFx2.IRF,Hb_model.HbO.IRFx2.params] = f_2alphaDeconvolve(HbO_low,rfp_HD,gfp_HD,win,fs,brain_mask,ds,numThreads);
+        [Hb_model.HbO.IRFx2.perf,Hb_model.HbO.IRFx2.IRF,Hb_model.HbO.IRFx2.params] = f_2alphaDeconvolve(HbO_low,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
         Hb_model.HbO.IRFx2.params.A = Hb_model.HbO.IRFx2.params.A*sum(Hb_model.HbO.IRFx2.IRF(:,1));
         Hb_model.HbO.IRFx2.params.B = Hb_model.HbO.IRFx2.params.B*sum(Hb_model.HbO.IRFx2.IRF(:,2));
         
         % Hb
         Hb_low = f_bpf(Hb,[0, 0.5],fs,3);
-        [Hb_model.Hb.LR.perf,Hb_model.Hb.LR.params] = f_LR_varWeights(Hb_low,rfp_HD,gfp_HD,win,fs,brain_mask,ds,numThreads);
+        [Hb_model.Hb.LR.perf,Hb_model.Hb.LR.params] = f_LR_varWeights(Hb_low,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
         
-        [Hb_model.Hb.IRFx2.perf,Hb_model.Hb.IRFx2.IRF,Hb_model.Hb.IRFx2.params] = f_2alphaDeconvolve(Hb_low,rfp_HD,gfp_HD,win,fs,brain_mask,ds,numThreads);
+        [Hb_model.Hb.IRFx2.perf,Hb_model.Hb.IRFx2.IRF,Hb_model.Hb.IRFx2.params] = f_2alphaDeconvolve(Hb_low,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
         Hb_model.Hb.IRFx2.params.A = Hb_model.Hb.IRFx2.params.A*sum(Hb_model.Hb.IRFx2.IRF(:,1));
         Hb_model.Hb.IRFx2.params.B = Hb_model.Hb.IRFx2.params.B*sum(Hb_model.Hb.IRFx2.IRF(:,2));
         clear HbO_low Hb_low
@@ -288,11 +576,13 @@ for nwbI = indices
         
         unfiltered.irf_win = win;
         
+        globalNE = mean(gfp_HD./std(gfp_HD,0,3).*brain_mask.*vessel_mask,[1,2],'omitnan');
+
         % estimate linear regression model
-        [unfiltered.LR.perf,unfiltered.LR.params] = f_LR_varWeights(HbT,rfp_HD,gfp_HD,win,fs,brain_mask,ds,numThreads);
+        [unfiltered.LR.perf,unfiltered.LR.params] = f_LR_varWeights(HbT,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
         
         % estimate double IRF model - varying weights
-        [unfiltered.IRFx2.perf,unfiltered.IRFx2.IRF,unfiltered.IRFx2.params] = f_2alphaDeconvolve(HbT,rfp_HD,gfp_HD,win,fs,brain_mask,ds,numThreads);
+        [unfiltered.IRFx2.perf,unfiltered.IRFx2.IRF,unfiltered.IRFx2.params] = f_2alphaDeconvolve(HbT,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
         unfiltered.IRFx2.params.A = unfiltered.IRFx2.params.A*sum(unfiltered.IRFx2.IRF(:,1));
         unfiltered.IRFx2.params.B = unfiltered.IRFx2.params.B*sum(unfiltered.IRFx2.IRF(:,2));
     end
@@ -308,15 +598,17 @@ for nwbI = indices
         win = [-5 10]; % IRF kernel range (s)
         
         shuffled.irf_win = win;
-            
+        
         shift = round(size(rfp_HD,3)/4);
         
+        globalNE = mean(gfp_HD./std(gfp_HD,0,3).*brain_mask.*vessel_mask,[1,2],'omitnan');
+
         for i = 1:3
             % estimate linear regression model
-            [shuffled.LR(i).perf,shuffled.LR(i).params] = f_LR_varWeights(HbT_low,rfp_HD,circshift(gfp_HD,i*shift,3),win,fs,brain_mask,ds,numThreads);
+            [shuffled.LR(i).perf,shuffled.LR(i).params] = f_LR_varWeights(HbT_low,rfp_HD,circshift(globalNE.*ones(size(rfp_HD,[1,2])),i*shift,3),win,fs,brain_mask,ds,numThreads);
             
             % estimate double IRF model - varying weights
-            [shuffled.IRFx2(i).perf,shuffled.IRFx2(i).IRF,shuffled.IRFx2(i).params] = f_2alphaDeconvolve(HbT_low,rfp_HD,circshift(gfp_HD,i*shift,3),win,fs,brain_mask,ds,numThreads);
+            [shuffled.IRFx2(i).perf,shuffled.IRFx2(i).IRF,shuffled.IRFx2(i).params] = f_2alphaDeconvolve(HbT_low,rfp_HD,circshift(globalNE.*ones(size(rfp_HD,[1,2])),i*shift,3),win,fs,brain_mask,ds,numThreads);
             shuffled.IRFx2(i).params.A = shuffled.IRFx2(i).params.A*sum(shuffled.IRFx2(i).IRF(:,1));
             shuffled.IRFx2(i).params.B = shuffled.IRFx2(i).params.B*sum(shuffled.IRFx2(i).IRF(:,2));
         end
@@ -342,11 +634,13 @@ for nwbI = indices
         fprintf('\n\tNE regression Analysis...');
         NE_reg = struct;
         
+        globalNE = mean(gfp_HD./std(gfp_HD,0,3).*brain_mask.*vessel_mask,[1,2],'omitnan');
+
         HbT_reg = HbT_low./std(HbT_low,0,3);
-        HbT_reg = HbT_reg-Fig2.LR.params.B.*gfp_HD./std(gfp_HD,0,3);
+        HbT_reg = HbT_reg-Fig2.LR.params.B.*globalNE.*ones(size(rfp_HD,[1,2]));
         NE_reg.HbT_reg = squeeze(mean(HbT_reg.*permute(allen_masks,[1 2 4 3]),[1, 2],'omitnan'));
-        
-        [NE_reg.IRFx1_inv.perf,NE_reg.IRFx1_inv.IRF,NE_reg.IRFx1_inv.params,tmpCorr] = f_1xIRF(HbT_reg,rfp_HD,win,fs,brain_mask,4,corrWin*fs,numThreads);
+        NE_reg.HbT_reg_global_LR = squeeze(globalNE) \ Fig3.HbT;
+        NE_reg.HbT_reg_global = Fig3.HbT - NE_reg.HbT_reg_global_LR.*squeeze(globalNE);
         
         % connectivity
         win = Fig3.win;
@@ -355,9 +649,14 @@ for nwbI = indices
         NE_reg.FC.HbT_reg = f_funConGram(NE_reg.HbT_reg,win*fs);
         NE_reg.lowNE_FC.HbT_reg = mean(NE_reg.FC.HbT_reg(:,:,lowNE),3);
         NE_reg.highNE_FC.HbT_reg = mean(NE_reg.FC.HbT_reg(:,:,highNE),3);
+
+        NE_reg.FC.HbT_reg_global = f_funConGram(NE_reg.HbT_reg_global,win*fs);
+        NE_reg.lowNE_FC.HbT_reg_global = mean(NE_reg.FC.HbT_reg_global(:,:,lowNE),3);
+        NE_reg.highNE_FC.HbT_reg_global = mean(NE_reg.FC.HbT_reg_global(:,:,highNE),3);
         
         NE_reg.FC_r.Ca_HbT = f_corr(Fig3.FC.Ca,Fig3.FC.HbT,3);
         NE_reg.FC_r.Ca_HbT_reg = f_corr(Fig3.FC.Ca,NE_reg.FC.HbT_reg,3);
+        NE_reg.FC_r.Ca_HbT_reg_global = f_corr(Fig3.FC.Ca,NE_reg.FC.HbT_reg_global,3);
     
         clear HbT_reg
     end
@@ -440,33 +739,34 @@ for nwbI = indices
     
     %% organize main figures
     
-    parcellation = load(fullfile('/projectnb/devorlab/bcraus/HRF/1P',sessionInfo.Date,mouseInfo.ID,'DataAnalysis','parcells_upd'));
+    if saveMetadata
+        parcellation = load(fullfile('/projectnb/devorlab/bcraus/HRF/1P',sessionInfo.Date,mouseInfo.ID,'DataAnalysis','parcells_upd'));
+        
+        metadata = struct;
+        metadata.Mouse = mouseInfo.ID;
+        metadata.Date = sessionInfo.Date;
+        metadata.Run = sessionInfo.Run;
+        metadata.iRun = sessionInfo.interRun;
+        metadata.settings.brain_mask = brain_mask;
+        metadata.settings.vessel_mask = vessel_mask;
+        metadata.settings.allen_masks = allen_masks;
+        metadata.settings.parcellation = parcellation;
+        metadata.upd = '25-06-30';
+        metadata.GRAB = GRAB;
     
-    metadata = struct;
-    metadata.Mouse = mouseInfo.ID;
-    metadata.Date = sessionInfo.Date;
-    metadata.Run = sessionInfo.Run;
-    metadata.iRun = sessionInfo.interRun;
-    metadata.settings.brain_mask = brain_mask;
-    metadata.settings.vessel_mask = vessel_mask;
-    metadata.settings.allen_masks = allen_masks;
-    metadata.settings.parcellation = parcellation;
-    metadata.upd = '25-06-30';
-    metadata.GRAB = GRAB;
-
-    savePath = strsplit(nwb_list(nwbI).Path,'/');
-    savePath = char(savePath(end));
-    savePath = savePath(1:end-4);
-    savePath = [savePath '.mat'];
-    savePath = fullfile('/projectnb/devorlab/bcraus/AnalysisCode/Neuromodulation/Analysis',savePath);
-    
-    if string(GRAB) == "GRAB_NE"
-        save(savePath,'metadata','Fig1','Fig2','Fig3','Behavior','Hb_model','unfiltered','shuffled','NE_reg','FC_fr','spectra','-v7.3');
-    else
-        save(savePath,'metadata','Fig1','Behavior','-v7.3');
+        savePath = strsplit(nwb_list(nwbI).Path,'/');
+        savePath = char(savePath(end));
+        savePath = savePath(1:end-4);
+        savePath = [savePath '.mat'];
+        savePath = fullfile(parentDir,'Analysis',savePath);
+        
+        if string(GRAB) == "GRAB_NE"
+            save(savePath,'metadata','Fig1','Fig2','Fig3','Behavior','Hb_model','unfiltered','shuffled','NE_reg','FC_fr','spectra','-v7.3');
+        else
+            save(savePath,'metadata','Fig1','Behavior','-v7.3');
+        end
+        fprintf('\n\tDone!\n');
     end
-    fprintf('\n\tDone!\n');
-
 end
 %% additional functions
 

@@ -109,15 +109,20 @@ cmp = cmp(1:end-20,:);
 
 X = Fig1.GRAB_global(runIdx);
 Y = Fig1.SSp_perf_dt(runIdx);
+X(30) = [];
+Y(30) = [];
 f = figure;
 f_multiScatter(X,Y,cmp=cmp,alpha=0.5,lineWidth=2,xlim=[-6 8],ylim=[-1 1],ylabel='r',xlabel='NE');
 
 barData = {};
 barData{1} = squeeze(subAvg.Fig1.SSp_perf_vs_GRAB_global(2,ACh_Idx));
 
+%%
 f = figure(Position=[100,100,200,330]);
 [dataMean, dataSEM] = f_plotBar(barData,colors=c_darkCyan,ylabel='r');
 ylim(0.5*[-1 1]);
+
+
 
 %% plot 1G
 
@@ -138,3 +143,21 @@ barData{3} = squeeze(mean(subAvg.Fig1.var_perf.*plotBM,[1,2],'omitnan'));
 
 f = figure;
 [dataMean, dataSEM] = f_plotBar(barData,colors=c_darkCyan,legend={'Invariant','SSp','Variant'},ylabel='r',title='Model Performance Comparison');
+
+p = f_SRtest(barData,0.05);
+
+%%
+
+cmp = cmpinf;
+% cmp = cmp(1:end-20,:);
+cmp = c_GRAB;
+X = cell(1);
+Y = cell(1);
+X{1} = grab(1:6000,5);
+Y{1} = Ca(1:6000,5);
+X{2} = grab(1:6000,5);
+Y{2} = Ca(1:6000,5);
+f = figure(Position=[100 100 500 450]);
+f_multiScatter(X,Y,cmp=cmp,alpha=0.1,lineWidth=2,xlim=[-6 8],ylim=[-10 15],ylabel='r',xlabel='NE');
+axis off;
+
