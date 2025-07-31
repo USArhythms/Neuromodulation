@@ -8,7 +8,7 @@ author - Bradley Rauscher (bcraus@bu.edu)
 This repository contains code to analyze widefield cortical imaging data. Types of analysis include estimation of convolution kernels, regression, and functional connectivity analysis. Published datasets can be found at https://dandiarchive.org/dandiset/001211. The supporting function f_extractNWB.m can be used to load and extract variables from .nwb files.
 </td>
 <td>
-![NVC GIF](docs/images/Ca_HbT.gif)
+<img src="docs/images/Ca_HbT.gif" width="300"/>
 </td>
 </tr>
 </table>
