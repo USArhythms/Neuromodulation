@@ -35,4 +35,4 @@ f_extractNWB(nwb)
 </pre>
 
 Outputs:
-rfp - raw U+0394 F/F Ca++
+rfp - raw &Delta;F/F Ca++
