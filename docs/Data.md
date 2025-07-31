@@ -35,4 +35,21 @@ f_extractNWB(nwb)
 </pre>
 
 Outputs:
-rfp - raw &Delta;F/F Ca++
+
+- rfp - raw &Delta;F/F Ca++ signal
+- gfp - raw &Delta;F/F GRAB signal
+- rfp_HD - hemodynamic artifact corrected &Delta;F/F Ca++ signal
+- gfp_HD - hemodynamic artifact corrected &Delta;F/F GRAB signal
+- Hb - estimated relative change in concentration of HbR (M)
+- HbO - estimated relative change in concentration of HbO (M)
+- HbT - estimated relative change in concentration of total hemoglobin (M) (Hb+HbO)
+- Whisking - estimated motion of mouse whisker pad
+- Pupil - estimated diameter change of eye pupil
+- Accelerometer - recorded mouse movement
+- brain_mask - mask of the optical exposure
+- vessel_mask - mask of large pial vessels
+- allen_masks - masks for major Allen atlas cortical regions
+- fs - optical sampling frequency
+- mouseInfo - information regarding subject
+- sessionInfo - information regarding session
+- behCam - video recording of mouse
