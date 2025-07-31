@@ -14,8 +14,10 @@ https://docs.dandiarchive.org/user-guide-using/accessing-data/downloading/
 Note: not recommended to download entire dandiset! 6.2 TB total
 
 To download a single session:
+<pre>
 '''
 dandi download https://dandiarchive.org/aip/dandisets/001543/versions/draft/assets/cdf5467c-22be-4257-b73d-05eccd54b644/
 '''
+</pre>
 
 To download other sessions, replace **cdf5467c-22be-4257-b73d-05eccd54b644** with session tag
