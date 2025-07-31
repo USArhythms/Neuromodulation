@@ -61,7 +61,7 @@ for nwbI = 1:numel(nwb_list)
     Fig1.Ca_allen = f_parcellate(rfp_HD,allen_masks);
     Fig1.GRAB_allen = f_parcellate(gfp_HD,allen_masks);
     Fig1.HbT_allen = f_parcellate(HbT,allen_masks);
-    Fig1.Pupil = Pupil;
+    Fig1.Pupil_full = Pupil;
     Fig1.Whisking = Whisking;
     Fig1.Accelerometer = Accelerometer;
     Fig1.GRAB_type = mouseInfo.GRAB;
@@ -535,7 +535,7 @@ function plotFig1(Fig1,savePath)
     ax2.XAxis.Visible = 'off';
 
     ax3 = nexttile;hold on;
-    plot(t,Fig1.Pupil*0.4+0.6,color=c_pupil);
+    plot(t,Fig1.Pupil_full*0.4+0.6,color=c_pupil);
     plot(t,rescale(Fig1.Whisking,0.3,0.6),color=[0 0.7 0.7]);
     plot(t,rescale(Fig1.Accelerometer,0,0.3),color=[0 0 0]);
     legend('Pupil','Whisking','Movement');
