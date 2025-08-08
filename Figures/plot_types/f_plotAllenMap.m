@@ -19,12 +19,14 @@ Title = p.Results.title;
 cLabel = p.Results.cLabel;
 cRange = p.Results.cRange;
 
+allen_path = fullfile(f_path,'Figures/plot_types/refAllen.mat');
+
 if isempty(parcellation) && isempty(mask)
-    parcellation = load('/projectnb/devorlab/bcraus/refAllen.mat');
+    parcellation = load(allen_path);
     mask = parcellation.refBM;
     parcellation = parcellation.refParcellation;
 elseif isempty(parcellation)
-    parcellation = load('/projectnb/devorlab/bcraus/refAllen.mat');
+    parcellation = load(allen_path);
     parcellation = parcellation.refParcellation;
 end
 

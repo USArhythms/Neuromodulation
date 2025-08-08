@@ -83,7 +83,8 @@ for i = 1:N
     Behavior.R.gfp_low_HbT_low{i} = metadata.Behavior.R.gfp_low_HbT_low;
     Behavior.R.rfp_HD_low_gfp_HD_low{i} = metadata.Behavior.R.rfp_HD_low_gfp_HD_low;
     Behavior.R.signals{i} = metadata.Behavior.R.signals;
-
+    Behavior.signals{i} = metadata.Behavior.signals;
+    
     if string(log(i).GRAB) == "GRAB_NE"
         Behavior.NE_IRF_perf{i} = metadata.Behavior.NE_IRF.perf;
         Behavior.NE_IRF_IRF{i} = metadata.Behavior.NE_IRF.IRF;
@@ -212,6 +213,9 @@ for i = 1:N
         spectra.NE{i} = metadata.spectra.NE;
         spectra.SPG_Ca{i} = SPG_Ca;
         spectra.SPG_HbT{i} = SPG_HbT;
+        
+        spectra.Ca{i} = metadata.spectra.Ca;
+        spectra.HbT{i} = metadata.spectra.HbT;
 
         spectra.lowF_lowNE_Ca{i} = squeeze(mean(SPG_Ca(low_idx,1:fIdx(1),:),[1,2]));
         spectra.lowF_highNE_Ca{i} = squeeze(mean(SPG_Ca(high_idx,1:fIdx(1),:),[1,2]));

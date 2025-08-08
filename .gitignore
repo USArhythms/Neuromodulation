@@ -1,7 +1,7 @@
 *.asv
 Analysis/
-Bad_Runs/
 Figures/results/
 Figures/supplementary_movies/
 results/
 data/
+archived/

@@ -47,15 +47,18 @@ tAft = 50;
 spg_trials_Ca = cell(numel(spectra.NE),1);
 spg_trials_HbT = cell(numel(spectra.NE),1);
 spg_trials_NE = cell(numel(spectra.NE),1);
+spg_trials_pupil = cell(numel(spectra.NE),1);
 subAvg.Spectra.spg_trials_Ca = NaN(tBef*10+tAft*10+1,300,12,numel(NE_order));
 subAvg.Spectra.spg_trials_HbT = NaN(tBef*10+tAft*10+1,300,12,numel(NE_order));
 subAvg.Spectra.spg_trials_NE = NaN(tBef*10+tAft*10+1,numel(NE_order));
+subAvg.Spectra.spg_trials_pupil = NaN(tBef*10+tAft*10+1,numel(NE_order));
 
 for i = 1:numel(spectra.NE)
     for idx = 1:numel(peaks{i})
         spg_trials_Ca{i}(:,:,:,idx) = spectra.SPG_Ca{i}(peaks{i}(idx)-tBef*10:peaks{i}(idx)+tAft*10,:,:);
         spg_trials_HbT{i}(:,:,:,idx) = spectra.SPG_HbT{i}(peaks{i}(idx)-tBef*10:peaks{i}(idx)+tAft*10,:,:);
         spg_trials_NE{i}(:,idx) = spectra.NE{i}(peaks{i}(idx)-tBef*10:peaks{i}(idx)+tAft*10);
+        spg_trials_pupil{i}(:,idx) = Behavior.signals{i}(peaks{i}(idx)-tBef*10:peaks{i}(idx)+tAft*10,4);
     end
 end
 
@@ -63,6 +66,7 @@ for i = 1:numel(NE_order)
     subAvg.Spectra.spg_trials_Ca(:,:,:,i) = mean(cat(4,spg_trials_Ca{NE_order(i).Runs}),4);
     subAvg.Spectra.spg_trials_HbT(:,:,:,i) = mean(cat(4,spg_trials_HbT{NE_order(i).Runs}),4);
     subAvg.Spectra.spg_trials_NE(:,i) = mean(cat(2,spg_trials_NE{NE_order(i).Runs}),2);
+    subAvg.Spectra.spg_trials_pupil(:,i) = mean(cat(2,spg_trials_pupil{NE_order(i).Runs}),2);
 end
 
 %% Fig Spectra A

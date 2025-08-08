@@ -5,6 +5,9 @@
 % 
 % Reads nwb files located at https://dandiarchive.org/dandiset/001543 and
 % performs IRF modeling, functional connectivity, and spectral analysis.
+% 
+% author - Brad Rauscher (bcraus@bu.edu)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% add path to local matNWB installation and child directories
 
@@ -47,7 +50,8 @@ for nwbI = 1:numel(nwb_list)
     
     Fig1 = struct;
     
-    ds = 32; % downsampling factor for estimation of initial timing parameters of IRF
+    ds = 32; % downsampling factor for estimation of initial timing 
+    % parameters of IRF
     numThreads = 8; % number of cores to use in optimization algorithm
     win = [0 10]; % IRF kernel range (s)
     corrWin = [15 3]; % window for temporal IRF performance analysis (s)
@@ -58,8 +62,8 @@ for nwbI = 1:numel(nwb_list)
     % low pass filter HbT below 0.5 Hz, for unfiltered use HbT
     HbT_low = f_bpf(HbT,[0,0.5],fs,3);
     
-    Fig1.Ca_allen = f_parcellate(rfp_HD,allen_masks);
-    Fig1.GRAB_allen = f_parcellate(gfp_HD,allen_masks);
+    Fig1.Ca_allen = f_parcellate(rfp_HD,allen_masks.*vessel_mask);
+    Fig1.GRAB_allen = f_parcellate(gfp_HD,allen_masks.*vessel_mask);
     Fig1.HbT_allen = f_parcellate(HbT,allen_masks);
     Fig1.Pupil_full = Pupil;
     Fig1.Whisking = Whisking;
@@ -85,9 +89,13 @@ for nwbI = 1:numel(nwb_list)
     
     % apply moving window to GRAB and pupil
     
-    Fig1.GRAB = squeeze(mean(gfp_HD.*permute(allen_masks,[1 2 4 3]),[1 2],'omitnan'));
+    Fig1.GRAB = squeeze(mean(gfp_HD.*permute(allen_masks.*vessel_mask,[1 2 4 3]),[1 2],'omitnan'));
     Fig1.GRAB = movmean(Fig1.GRAB,corrWin(2)*fs);
     Fig1.GRAB = Fig1.GRAB(corrWin(1)*fs/2:corrWin(2)*fs:size(Fig1.GRAB,1)-corrWin(1)*fs/2,:);
+    
+    Fig1.GRAB_global = f_parcellate(gfp_HD,brain_mask.*vessel_mask);
+    Fig1.GRAB_global_ds = movmean(Fig1.GRAB_global,corrWin(2)*fs);
+    Fig1.GRAB_global_ds = Fig1.GRAB_global_ds(corrWin(1)*fs/2:corrWin(2)*fs:size(Fig1.GRAB_global,1)-corrWin(1)*fs/2,:);
     
     Fig1.Pupil = movmean(Pupil,corrWin(2)*fs);
     Fig1.Pupil = Fig1.Pupil(corrWin(1)*fs/2:corrWin(2)*fs:size(Fig1.Pupil,1)-corrWin(1)*fs/2,:);
@@ -97,25 +105,15 @@ for nwbI = 1:numel(nwb_list)
     Fig1.SSp_perf_vs_pupil = Fig1.SSp_perf_vs_pupil(2:13)';
     
     Fig1.SSp_perf_vs_GRAB = f_corr(Fig1.GRAB, Fig1.IRFx1_SSp.perf_dt, 1)';
-
-    %% GRAB connectivity
-
-    GRAB_FC = struct;
-
-    GRAB_FC.GRAB = squeeze(mean(gfp_HD.*brain_mask.*vessel_mask.*permute(allen_masks,[1 2 4 3]),[1,2],'omitnan'));
-    GRAB_FC.GRAB_global = squeeze(mean(gfp_HD.*brain_mask.*vessel_mask,[1,2],'omitnan'));
-    GRAB_FC.GRAB_norm = squeeze(mean(gfp_HD./std(gfp_HD,0,3).*brain_mask.*vessel_mask,[1,2],'omitnan'));
-    GRAB_FC.FC = corrcoef(GRAB_FC.GRAB);
-    GRAB_FC.FC_detrend = corrcoef(detrend(GRAB_FC.GRAB));
+    Fig1.SSp_perf_vs_GRAB_global = f_corr(Fig1.GRAB_global_ds,Fig1.IRFx1_SSp.perf_dt, 1)';
 
     %% perform analysis for Fig 2
     
     if string(mouseInfo.GRAB) == "GRAB_NE"
         fprintf('\n\tFigure 2 Analysis...');
+
         Fig2 = struct;
         
-        ds = 32; % downsampling factor for estimation of initial timing parameters of IRF
-        numThreads = 4; % number of cores to use in optimization algorithm
         win = [-5 10]; % IRF kernel range (s)
         
         Fig2.irf_win = win;
@@ -123,22 +121,18 @@ for nwbI = 1:numel(nwb_list)
 
         HbT_low = f_bpf(HbT,[0, 0.5],fs,3);
         
-        globalNE = f_parcellate(gfp_HD./std(gfp_HD,0,3),brain_mask);
-        globalNE = permute(globalNE,[2,3,1]);
-        Fig2.Ca_norm = f_parcellate(rfp_HD./std(rfp_HD,0,3),allen_masks);
+        Fig2.NE = f_parcellate(gfp_HD./std(gfp_HD,0,3),brain_mask.*vessel_mask);
+        globalNE = permute(Fig2.NE,[2,3,1]);
+        Fig2.Ca_norm = f_parcellate(rfp_HD./std(rfp_HD,0,3),allen_masks.*vessel_mask);
         Fig2.HbT_norm = f_parcellate(HbT_low./std(HbT_low,0,3),allen_masks);
 
-        Fig2.LR = struct;
-        Fig2.NE = squeeze(globalNE);
-
         % estimate linear regression model
-
+        Fig2.LR = struct;
         [Fig2.LR.perf,Fig2.LR.params,Fig2.LR_Ca,Fig2.LR_NE] = f_LR_varWeights(HbT_low,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
         Fig2.LR_Ca = f_parcellate(Fig2.LR_Ca,brain_mask.*allen_masks);
         Fig2.LR_NE = f_parcellate(Fig2.LR_NE,brain_mask.*allen_masks);
 
         % estimate double IRF model - varying weights
-        
         Fig2.IRFx2 = struct;
         [Fig2.IRFx2.perf,Fig2.IRFx2.IRF,Fig2.IRFx2.params,Fig2.IRFx2_Ca,Fig2.IRFx2_NE] = f_2alphaDeconvolve(HbT_low,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
         Fig2.IRFx2.params.A = Fig2.IRFx2.params.A*sum(Fig2.IRFx2.IRF(:,1));
@@ -152,6 +146,7 @@ for nwbI = 1:numel(nwb_list)
     
     if string(mouseInfo.GRAB) == "GRAB_NE"
         fprintf('\n\tFigure 3 Analysis...');
+        
         Fig3 = struct;
         
         win = [30 6]; % length of sliding connectivity window (s)
@@ -165,11 +160,11 @@ for nwbI = 1:numel(nwb_list)
         Fig3.Whisking = Whisking;
         Fig3.Accelerometer = Accelerometer;
 
-        Fig3.Ca = squeeze(mean(rfp_HD./std(rfp_HD,0,3).*vessel_mask.*permute(allen_masks,[1 2 4 3]),[1 2],'omitnan'));
-        Fig3.HbT = squeeze(mean(HbT_low./std(HbT_low,0,3).*permute(allen_masks,[1 2 4 3]),[1 2],'omitnan'));
+        Fig3.Ca = Fig2.Ca_norm;
+        Fig3.HbT = Fig2.HbT_norm;
         
         % extract hemisphere-wide GRAB signal
-        Fig3.GRAB = squeeze(mean(gfp_HD.*vessel_mask,[1, 2],'omitnan'));
+        Fig3.GRAB = Fig1.GRAB_global;
         Fig3.GRAB = movmean(Fig3.GRAB,win(2)*fs);
         Fig3.GRAB = Fig3.GRAB(win(1)*fs/2:win(2)*fs:size(Fig3.GRAB,1)-win(1)*fs/2);
         
@@ -207,12 +202,19 @@ for nwbI = 1:numel(nwb_list)
         Fig3.r.FC_Ca_HbT_vs_GRAB = f_corr(Fig3.FC.Ca_vs_HbT,Fig3.GRAB,1);
     end
 
-    %% plot Fig 3
+    %% GRAB connectivity
     
-    if string(mouseInfo.GRAB) == "GRAB_NE"
-        plotFig3(Fig3,files.save);
-    end
-    
+    fprintf('\n\tGRAB Connectivity Analysis...');
+    % calculate average connectivity matrices between allen cortical
+    % regions for GRAB
+    GRAB_FC = struct;
+
+    GRAB_FC.GRAB = Fig1.GRAB_allen;
+    GRAB_FC.GRAB_global = Fig1.GRAB_global;
+    GRAB_FC.GRAB_norm = f_parcellate(gfp_HD./std(gfp_HD,0,3),allen_masks.*vessel_mask);
+    GRAB_FC.FC = corrcoef(GRAB_FC.GRAB);
+    GRAB_FC.FC_detrend = corrcoef(detrend(GRAB_FC.GRAB));
+
     %% analysis for behavior supplementary
     fprintf('\n\tBehavior Analysis...');
 
@@ -251,23 +253,18 @@ for nwbI = 1:numel(nwb_list)
     if string(mouseInfo.GRAB) == "GRAB_NE"
         [Behavior.NE_IRF.perf,Behavior.NE_IRF.IRF] = f_directDeco(f_bpf(gfp_HD,[0, 0.5],fs,3),rfp_HD,[-5, 10],fs,comb_mask,4);
     end
-    
-    clear gfp;
-    
+        
     %% Hb and HbO modeling
     
     if string(mouseInfo.GRAB) == "GRAB_NE"
         fprintf('\n\tHb modeling Analysis...');
+        
         Hb_model = struct;
         
-        ds = 32; % downsampling factor for estimation of initial timing parameters of IRF
-        numThreads = 4; % number of cores to use in optimization algorithm
         win = [-5 10]; % IRF kernel range (s)
         
         Hb_model.irf_win = win;
         
-        globalNE = mean(gfp_HD./std(gfp_HD,0,3).*brain_mask.*vessel_mask,[1,2],'omitnan');
-
         % HbO
         HbO_low = f_bpf(HbO,[0, 0.5],fs,3);
         [Hb_model.HbO.LR.perf,Hb_model.HbO.LR.params] = f_LR_varWeights(HbO_low,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
@@ -290,15 +287,12 @@ for nwbI = 1:numel(nwb_list)
     
     if string(mouseInfo.GRAB) == "GRAB_NE"
         fprintf('\n\tUnfiltered Analysis...');
+        
         unfiltered = struct;
         
-        ds = 32; % downsampling factor for estimation of initial timing parameters of IRF
-        numThreads = 4; % number of cores to use in optimization algorithm
         win = [-5 10]; % IRF kernel range (s)
         
         unfiltered.irf_win = win;
-        
-        globalNE = mean(gfp_HD./std(gfp_HD,0,3).*brain_mask.*vessel_mask,[1,2],'omitnan');
 
         % estimate linear regression model
         [unfiltered.LR.perf,unfiltered.LR.params] = f_LR_varWeights(HbT,rfp_HD,globalNE.*ones(size(rfp_HD,[1,2])),win,fs,brain_mask,ds,numThreads);
@@ -313,17 +307,14 @@ for nwbI = 1:numel(nwb_list)
     
     if string(mouseInfo.GRAB) == "GRAB_NE"
         fprintf('\n\tShuffled Analysis...');
+        
         shuffled = struct;
         
-        ds = 32; % downsampling factor for estimation of initial timing parameters of IRF
-        numThreads = 4; % number of cores to use in optimization algorithm
         win = [-5 10]; % IRF kernel range (s)
         
         shuffled.irf_win = win;
         
         shift = round(size(rfp_HD,3)/4);
-        
-        globalNE = mean(gfp_HD./std(gfp_HD,0,3).*brain_mask.*vessel_mask,[1,2],'omitnan');
 
         for i = 1:3
             % estimate linear regression model
@@ -354,13 +345,12 @@ for nwbI = 1:numel(nwb_list)
     %% NE regression
     if string(mouseInfo.GRAB) == "GRAB_NE"
         fprintf('\n\tNE regression Analysis...');
+        
         NE_reg = struct;
         
-        globalNE = mean(gfp_HD./std(gfp_HD,0,3).*brain_mask.*vessel_mask,[1,2],'omitnan');
-
-        HbT_reg = HbT_low./std(HbT_low,0,3);
-        HbT_reg = HbT_reg-Fig2.LR.params.B.*globalNE.*ones(size(rfp_HD,[1,2]));
-        NE_reg.HbT_reg = squeeze(mean(HbT_reg.*permute(allen_masks,[1 2 4 3]),[1, 2],'omitnan'));
+        NE_reg.HbT_reg = HbT_low./std(HbT_low,0,3);
+        NE_reg.HbT_reg = NE_reg.HbT_reg-Fig2.LR.params.B.*globalNE;
+        NE_reg.HbT_reg = f_parcellate(NE_reg.HbT_reg,allen_masks);
         NE_reg.HbT_reg_global_LR = squeeze(globalNE) \ Fig3.HbT;
         NE_reg.HbT_reg_global = Fig3.HbT - NE_reg.HbT_reg_global_LR.*squeeze(globalNE);
         
@@ -380,19 +370,20 @@ for nwbI = 1:numel(nwb_list)
         NE_reg.FC_r.Ca_HbT_reg = f_corr(Fig3.FC.Ca,NE_reg.FC.HbT_reg,3);
         NE_reg.FC_r.Ca_HbT_reg_global = f_corr(Fig3.FC.Ca,NE_reg.FC.HbT_reg_global,3);
     
-        clear HbT_reg
     end
     
     %% frequency-dependent connectivity
     
     if string(mouseInfo.GRAB) == "GRAB_NE"
         fprintf('\n\tFrequency-dependent connectivity Analysis...');
+        
         labels = {'low','medium','high'};
         fr_range = [0, 0.1;
                     0.1, 0.5;
                     0.5, 5];
         
         FC_fr = struct;
+        FC_fr.fr = fr_range;
         
         for i = 1:3
             tmpFilt = f_bpf(rfp_HD,fr_range(i,:),fs,3);
@@ -418,19 +409,15 @@ for nwbI = 1:numel(nwb_list)
     
     if string(mouseInfo.GRAB) == "GRAB_NE"
         fprintf('\n\tSpectral Analysis...');
-        spectra = struct;
         
-        tmp = rfp_HD./std(rfp_HD,0,3);
-        spectra.Ca_norm = squeeze(mean(tmp.*vessel_mask.*permute(allen_masks,[1 2 4 3]),[1 2],'omitnan'));
-        tmp = HbT./std(HbT,0,3);
-        spectra.HbT_norm = squeeze(mean(tmp.*permute(allen_masks,[1 2 4 3]),[1 2],'omitnan'));
+        spectra = struct;
         
         spectra.Ca = squeeze(mean(rfp_HD.*vessel_mask.*permute(allen_masks,[1 2 4 3]),[1 2],'omitnan'));
         spectra.HbT = squeeze(mean(HbT.*permute(allen_masks,[1 2 4 3]),[1 2],'omitnan'));
         spectra.NE = squeeze(mean(gfp_HD.*vessel_mask.*brain_mask,[1, 2],'omitnan'));
         
-        [spectra.SPG.Ca,spectra.SPG.t,spectra.SPG.f] = f_morlet(spectra.Ca_norm,fs,[0.01 fs/2],300);
-        spectra.SPG.HbT = f_morlet(spectra.HbT_norm,fs,[0.01 fs/2],300);
+        [spectra.SPG.Ca,spectra.SPG.t,spectra.SPG.f] = f_morlet(spectra.Ca,fs,[0.01 fs/2],300);
+        spectra.SPG.HbT = f_morlet(spectra.HbT,fs,[0.01 fs/2],300);
     
         NE_bin = prctile(spectra.NE,[30 70]);
         low_idx = spectra.NE < NE_bin(1);
